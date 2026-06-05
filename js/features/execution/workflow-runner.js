@@ -1600,6 +1600,65 @@ export function createWorkflowRunnerApi({
         return downstream;
     }
 
+    function collectReachableNodeIdsFromOutputPorts(plan, sourceNodeId, outputPorts = []) {
+        const portSet = new Set(outputPorts);
+        if (!sourceNodeId || portSet.size === 0) return new Set();
+        const reachable = new Set();
+        const queue = state.connections
+            .filter((connection) => (
+                connection.from.nodeId === sourceNodeId &&
+                portSet.has(connection.from.port) &&
+                plan.scopeNodeSet.has(connection.to.nodeId)
+            ))
+            .map((connection) => connection.to.nodeId);
+
+        while (queue.length > 0) {
+            const currentId = queue.shift();
+            if (!currentId || reachable.has(currentId)) continue;
+            reachable.add(currentId);
+
+            state.connections
+                .filter((connection) => (
+                    connection.from.nodeId === currentId &&
+                    plan.scopeNodeSet.has(connection.to.nodeId)
+                ))
+                .forEach((connection) => {
+                    if (!reachable.has(connection.to.nodeId)) queue.push(connection.to.nodeId);
+                });
+        }
+
+        return reachable;
+    }
+
+    function markInactiveControlBranchesSkipped(plan, node, completedNodes, skippedNodeIds) {
+        if (!node || node.type !== 'ControlCondition') return 0;
+        const conditionPassed = node.data?.lastResult === true;
+        const activePorts = conditionPassed ? ['true'] : ['false'];
+        const inactivePorts = conditionPassed ? ['false'] : ['true'];
+        const activeReachable = collectReachableNodeIdsFromOutputPorts(plan, node.id, activePorts);
+        const inactiveReachable = collectReachableNodeIdsFromOutputPorts(plan, node.id, inactivePorts);
+        let skippedCount = 0;
+
+        inactiveReachable.forEach((nodeId) => {
+            if (activeReachable.has(nodeId)) return;
+            if (!plan.scopeNodeSet.has(nodeId)) return;
+            if (completedNodes.has(nodeId)) return;
+            skippedNodeIds.add(nodeId);
+            completedNodes.add(nodeId);
+            skippedCount += 1;
+        });
+
+        if (skippedCount > 0) {
+            addLog('info', `条件分支已跳过: ${getNodeDisplayTitle(node)}`, `已跳过未命中分支上的 ${skippedCount} 个节点。`, {
+                nodeId: node.id,
+                result: conditionPassed,
+                skippedNodeIds: Array.from(skippedNodeIds).filter((id) => inactiveReachable.has(id))
+            });
+        }
+
+        return skippedCount;
+    }
+
     function createLinkedAbortSignal(signals) {
         const controller = new AbortController();
         const validSignals = signals.filter(Boolean);
@@ -1704,6 +1763,7 @@ export function createWorkflowRunnerApi({
 
         const completedNodes = new Set();
         const runningNodes = new Set();
+        const skippedNodeIds = new Set();
         const downstreamNodes = collectDownstreamNodeIds(plan, nodeId);
         order.forEach((nid) => {
             if (!downstreamNodes.has(nid)) {
@@ -1779,6 +1839,7 @@ export function createWorkflowRunnerApi({
                 }));
                 scheduleSave();
                 completedNodes.add(nid);
+                markInactiveControlBranchesSkipped(plan, currentNode, completedNodes, skippedNodeIds);
             } catch (err) {
                 if (isAbortLikeError(err)) {
                     currentNode.runStartedAt = null;
@@ -1849,6 +1910,7 @@ export function createWorkflowRunnerApi({
             for (const nid of order) {
                 if (nid === nodeId) continue;
                 if (!downstreamNodes.has(nid)) continue;
+                if (skippedNodeIds.has(nid)) continue;
                 if (session.controller.signal.aborted) {
                     const abortError = new Error('Node run aborted');
                     abortError.name = 'AbortError';
@@ -2177,6 +2239,7 @@ export function createWorkflowRunnerApi({
         const completedNodes = new Set();
         const failedNodes = new Set();
         const runningNodes = new Set();
+        const skippedNodeIds = new Set();
         let terminatedByError = false;
         const isRunActive = () => !session.stopped && !session.controller.signal.aborted;
 
@@ -2218,7 +2281,7 @@ export function createWorkflowRunnerApi({
 
                     const readyNodes = order.filter((nid) => {
                         if (session.canceledBranchNodeIds.has(nid)) return false;
-                        if (completedNodes.has(nid) || runningNodes.has(nid) || failedNodes.has(nid)) return false;
+                        if (skippedNodeIds.has(nid) || completedNodes.has(nid) || runningNodes.has(nid) || failedNodes.has(nid)) return false;
                         const node = state.nodes.get(nid);
                         if (!node || node.enabled === false) {
                             completedNodes.add(nid);
@@ -2233,7 +2296,7 @@ export function createWorkflowRunnerApi({
 
                     if (readyNodes.length > 0) {
                         readyNodes.forEach((nid) => {
-                            if (session.canceledBranchNodeIds.has(nid) || runningNodes.has(nid) || completedNodes.has(nid)) return;
+                            if (session.canceledBranchNodeIds.has(nid) || skippedNodeIds.has(nid) || runningNodes.has(nid) || completedNodes.has(nid)) return;
                             runningNodes.add(nid);
                             const node = state.nodes.get(nid);
                             const nodeTitle = getNodeDisplayTitle(node);
@@ -2287,6 +2350,7 @@ export function createWorkflowRunnerApi({
                                     addLog('success', `节点已完成: ${nodeTitle}`, `耗时 ${durationSec}s`, createNodeCompletionLogDetails(node, loggedInputs));
                                     scheduleSave();
                                     completedNodes.add(nid);
+                                    markInactiveControlBranchesSkipped(plan, node, completedNodes, skippedNodeIds);
                                 } catch (err) {
                                     if (isAbortLikeError(err)) {
                                         node.runStartedAt = null;

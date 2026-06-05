@@ -1030,6 +1030,79 @@ function renderTextSplitBody(id, restoreData) {
     `;
 }
 
+function normalizeControlConditionMode(value) {
+    return [
+        'truthy',
+        'equals',
+        'notEquals',
+        'contains',
+        'notContains',
+        'greaterThan',
+        'lessThan',
+        'regex'
+    ].includes(value) ? value : 'truthy';
+}
+
+function renderControlConditionBody(id, restoreData = {}) {
+    const rd = restoreData || {};
+    const mode = normalizeControlConditionMode(rd.conditionMode);
+    const value = rd.conditionValue ?? rd.value ?? '';
+    const compare = rd.compareValue ?? rd.compare ?? '';
+    return `
+        ${renderNodeFormField({
+            label: '判断方式',
+            content: `<select id="${id}-condition-mode">
+                <option value="truthy" ${mode === 'truthy' ? 'selected' : ''}>有内容/为真</option>
+                <option value="equals" ${mode === 'equals' ? 'selected' : ''}>等于</option>
+                <option value="notEquals" ${mode === 'notEquals' ? 'selected' : ''}>不等于</option>
+                <option value="contains" ${mode === 'contains' ? 'selected' : ''}>包含</option>
+                <option value="notContains" ${mode === 'notContains' ? 'selected' : ''}>不包含</option>
+                <option value="greaterThan" ${mode === 'greaterThan' ? 'selected' : ''}>大于</option>
+                <option value="lessThan" ${mode === 'lessThan' ? 'selected' : ''}>小于</option>
+                <option value="regex" ${mode === 'regex' ? 'selected' : ''}>正则匹配</option>
+            </select>`
+        })}
+        ${renderNodeFormField({
+            label: '判断值',
+            content: `<textarea id="${id}-condition-value" rows="3" placeholder="可连接上游，或在这里输入固定值"${getTextareaHeightStyle(rd, 'condition-value')}>${escapeHtml(value)}</textarea>`
+        })}
+        ${renderNodeFormField({
+            label: '比较值',
+            content: `<textarea id="${id}-compare-value" rows="3" placeholder="等于/包含/大小比较/正则时使用"${getTextareaHeightStyle(rd, 'compare-value')}>${escapeHtml(compare)}</textarea>`
+        })}
+        <div class="control-node-summary" id="${id}-control-summary">${escapeHtml(rd.lastResultText || '运行后选择“是”或“否”分支')}</div>
+    `;
+}
+
+function normalizeControlLoopMode(value) {
+    return value === 'inputList' ? 'inputList' : 'count';
+}
+
+function renderControlLoopBody(id, restoreData = {}) {
+    const rd = restoreData || {};
+    const mode = normalizeControlLoopMode(rd.loopMode);
+    const count = Math.max(1, parseInt(rd.loopCount ?? rd.count ?? '3', 10) || 3);
+    const value = rd.loopValue ?? rd.value ?? '';
+    return `
+        ${renderNodeFormField({
+            label: '循环方式',
+            content: `<select id="${id}-loop-mode">
+                <option value="count" ${mode === 'count' ? 'selected' : ''}>按次数重复</option>
+                <option value="inputList" ${mode === 'inputList' ? 'selected' : ''}>按输入列表逐项</option>
+            </select>`
+        })}
+        ${renderNodeFormField({
+            label: '次数',
+            content: `<input type="number" id="${id}-loop-count" min="1" max="100" step="1" value="${count}" />`
+        })}
+        ${renderNodeFormField({
+            label: '循环输入',
+            content: `<textarea id="${id}-loop-value" rows="4" placeholder="可连接上游；按次数重复时会重复此值"${getTextareaHeightStyle(rd, 'loop-value')}>${escapeHtml(value)}</textarea>`
+        })}
+        <div class="control-node-summary" id="${id}-loop-summary">${escapeHtml(rd.lastResultText || '运行后从“循环项”输出多次执行')}</div>
+    `;
+}
+
 function renderImageSaveBody(id, restoreData, hasGlobalSaveDirHandle) {
     const rd = restoreData || {};
     const showWarning = !hasGlobalSaveDirHandle;
@@ -1123,6 +1196,8 @@ function renderNodeBody(type, id, restoreData, state) {
     if (type === 'Text') return renderTextBody(id, restoreData);
     if (type === 'TextMerge') return renderTextMergeBody(id);
     if (type === 'TextSplit') return renderTextSplitBody(id, restoreData);
+    if (type === 'ControlCondition') return renderControlConditionBody(id, restoreData);
+    if (type === 'ControlLoop') return renderControlLoopBody(id, restoreData);
     if (type === 'CustomParams') return renderCustomParamsBody(id, restoreData);
     if (type === 'ImageSave') return renderImageSaveBody(id, restoreData, state.globalSaveDirHandle);
     return '';

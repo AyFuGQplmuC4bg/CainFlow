@@ -20,6 +20,36 @@
     max-width: min(220px, calc(100% - 16px));
 }
 
+.node-control {
+    --node-control-accent: #38bdf8;
+}
+
+.node-control .node-header svg {
+    color: var(--node-control-accent);
+}
+
+.node-control .node-body textarea {
+    min-height: 72px;
+}
+
+.control-node-summary {
+    box-sizing: border-box;
+    min-height: 34px;
+    padding: 9px 10px;
+    border: 1px solid rgba(56, 189, 248, 0.24);
+    border-radius: 8px;
+    background: rgba(8, 47, 73, 0.28);
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.node-control-condition .port-dot.type-text.connected,
+.node-control-loop .port-dot.type-text.connected {
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.58);
+}
+
 .node-concurrent-status-grid {
     display: flex;
     flex-wrap: wrap;

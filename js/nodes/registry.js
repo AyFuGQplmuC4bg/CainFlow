@@ -15,6 +15,7 @@ import { textNode } from './types/text.js';
 import { textSplitNode } from './types/text-split.js';
 import { cameraControlNode } from './types/camera-control.js';
 import { customParamsNode } from './types/custom-params.js';
+import { controlConditionNode, controlLoopNode } from './types/control-flow.js';
 
 const nodeDefinitions = [
     imageImportNode,
@@ -25,6 +26,8 @@ const nodeDefinitions = [
     videoGenerateNode,
     cameraControlNode,
     customParamsNode,
+    controlConditionNode,
+    controlLoopNode,
     textChatNode,
     textNode,
     textMergeNode,

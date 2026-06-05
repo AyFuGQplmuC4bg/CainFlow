@@ -1262,6 +1262,28 @@ export function createNodeLifecycleApi({
                 nodeData.data[`part_${index + 1}`] = part;
             });
         }
+        if (normalizedType === 'ControlCondition') {
+            const allowedModes = new Set(['truthy', 'equals', 'notEquals', 'contains', 'notContains', 'greaterThan', 'lessThan', 'regex']);
+            const conditionMode = allowedModes.has(effectiveRestoreData?.conditionMode)
+                ? effectiveRestoreData.conditionMode
+                : 'truthy';
+            nodeData.data.conditionMode = conditionMode;
+            nodeData.data.conditionValue = effectiveRestoreData?.conditionValue ?? effectiveRestoreData?.value ?? '';
+            nodeData.data.compareValue = effectiveRestoreData?.compareValue ?? effectiveRestoreData?.compare ?? '';
+            nodeData.data.lastResult = effectiveRestoreData?.lastResult === true;
+            nodeData.data.lastResultText = effectiveRestoreData?.lastResultText || '';
+            if (effectiveRestoreData?.text !== undefined) nodeData.data.text = effectiveRestoreData.text;
+        }
+        if (normalizedType === 'ControlLoop') {
+            const loopMode = effectiveRestoreData?.loopMode === 'inputList' ? 'inputList' : 'count';
+            const loopCount = Math.max(1, Math.min(100, parseInt(effectiveRestoreData?.loopCount ?? effectiveRestoreData?.count ?? '3', 10) || 3));
+            nodeData.data.loopMode = loopMode;
+            nodeData.data.loopCount = loopCount;
+            nodeData.data.loopValue = effectiveRestoreData?.loopValue ?? effectiveRestoreData?.value ?? '';
+            nodeData.data.items = Array.isArray(effectiveRestoreData?.items) ? effectiveRestoreData.items.slice(0, 100) : [];
+            nodeData.data.done = effectiveRestoreData?.done || '';
+            nodeData.data.lastResultText = effectiveRestoreData?.lastResultText || '';
+        }
         if (normalizedType === 'CustomParams') {
             const restoredParams = Array.isArray(effectiveRestoreData?.params)
                 ? effectiveRestoreData.params

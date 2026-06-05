@@ -168,6 +168,22 @@ export function createClipboardControllerApi({
             serialized.mergeOutputEnabled = documentRef.getElementById(`${id}-merge-output-enabled`)?.checked === true;
             serialized.parts = Array.isArray(node.data?.parts) ? node.data.parts.slice() : [];
         }
+        if (node.type === 'ControlCondition') {
+            serialized.conditionMode = documentRef.getElementById(`${id}-condition-mode`)?.value || node.data?.conditionMode || 'truthy';
+            serialized.conditionValue = documentRef.getElementById(`${id}-condition-value`)?.value ?? node.data?.conditionValue ?? '';
+            serialized.compareValue = documentRef.getElementById(`${id}-compare-value`)?.value ?? node.data?.compareValue ?? '';
+            serialized.lastResult = node.data?.lastResult === true;
+            serialized.lastResultText = node.data?.lastResultText || '';
+            serialized.text = node.data?.text || '';
+        }
+        if (node.type === 'ControlLoop') {
+            serialized.loopMode = documentRef.getElementById(`${id}-loop-mode`)?.value || node.data?.loopMode || 'count';
+            serialized.loopCount = Math.max(1, Math.min(100, parseInt(documentRef.getElementById(`${id}-loop-count`)?.value ?? node.data?.loopCount ?? '3', 10) || 3));
+            serialized.loopValue = documentRef.getElementById(`${id}-loop-value`)?.value ?? node.data?.loopValue ?? '';
+            serialized.items = Array.isArray(node.data?.items) ? node.data.items.slice() : [];
+            serialized.done = node.data?.done || '';
+            serialized.lastResultText = node.data?.lastResultText || '';
+        }
         if (node.type === 'CameraControl') {
             serialized.pitch = Number(node.data?.pitch ?? 12);
             serialized.yaw = Number(node.data?.yaw ?? 28);

@@ -976,6 +976,17 @@ export function createExecutionCoreApi({
 
     function getCachedOutputValue(node, portName) {
         if (!node || node.enabled === false) return undefined;
+        if (node.type === 'ControlCondition') {
+            if (portName === 'true') return node.data?.lastResult === true ? (node.data?.text ?? '') : undefined;
+            if (portName === 'false') return node.data?.lastResult === false ? (node.data?.text ?? '') : undefined;
+        }
+        if (node.type === 'ControlLoop') {
+            if (portName === 'loop') {
+                const items = Array.isArray(node.data?.items) ? node.data.items : [];
+                return items.length > 0 ? items.slice() : undefined;
+            }
+            if (portName === 'done') return node.data?.done || undefined;
+        }
         if (portName === 'params' && node.type === 'CustomParams') {
             return getCustomParamsFromNode(node);
         }
@@ -1435,6 +1446,81 @@ export function createExecutionCoreApi({
         scheduleSave,
         requestNodeFit
     });
+
+    function stringifyControlValue(value) {
+        if (Array.isArray(value)) return value.map((item) => stringifyControlValue(item)).join('\n');
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'object') {
+            try {
+                return JSON.stringify(value);
+            } catch {
+                return String(value);
+            }
+        }
+        return String(value);
+    }
+
+    function normalizeTruthyText(value) {
+        return String(value ?? '').trim().toLowerCase();
+    }
+
+    function isTruthyControlValue(value) {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return Number.isFinite(value) && value !== 0;
+        if (Array.isArray(value)) return value.length > 0;
+        const text = normalizeTruthyText(value);
+        if (!text) return false;
+        return !['false', '0', 'no', 'off', 'null', 'undefined'].includes(text);
+    }
+
+    function evaluateControlCondition(mode, value, compare) {
+        const left = stringifyControlValue(value);
+        const right = stringifyControlValue(compare);
+        switch (mode) {
+            case 'equals':
+                return left.trim() === right.trim();
+            case 'notEquals':
+                return left.trim() !== right.trim();
+            case 'contains':
+                return right ? left.includes(right) : false;
+            case 'notContains':
+                return right ? !left.includes(right) : true;
+            case 'greaterThan': {
+                const leftNumber = Number(left);
+                const rightNumber = Number(right);
+                return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber > rightNumber;
+            }
+            case 'lessThan': {
+                const leftNumber = Number(left);
+                const rightNumber = Number(right);
+                return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber < rightNumber;
+            }
+            case 'regex':
+                try {
+                    return right ? new RegExp(right).test(left) : false;
+                } catch {
+                    return false;
+                }
+            case 'truthy':
+            default:
+                return isTruthyControlValue(value);
+        }
+    }
+
+    function readControlConditionMode(nodeId, fallback = 'truthy') {
+        const value = documentRef.getElementById(`${nodeId}-condition-mode`)?.value || fallback;
+        return ['truthy', 'equals', 'notEquals', 'contains', 'notContains', 'greaterThan', 'lessThan', 'regex'].includes(value)
+            ? value
+            : 'truthy';
+    }
+
+    function splitLoopTextValue(value) {
+        const text = stringifyControlValue(value);
+        return text
+            .split(/\r?\n/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
 
     const nodeHandlers = {
         ImageImport: async (node) => {
@@ -2099,6 +2185,62 @@ export function createExecutionCoreApi({
             node.data = node.data || {};
             node.data.params = Object.entries(params).map(([key, value]) => ({ key, value }));
             return { params };
+        },
+        ControlCondition: async (node, inputs = {}) => {
+            const id = node.id;
+            const mode = readControlConditionMode(id, node.data?.conditionMode || 'truthy');
+            const valueInput = Object.prototype.hasOwnProperty.call(inputs, 'value')
+                ? inputs.value
+                : (documentRef.getElementById(`${id}-condition-value`)?.value ?? node.data?.conditionValue ?? '');
+            const compareInput = Object.prototype.hasOwnProperty.call(inputs, 'compare')
+                ? inputs.compare
+                : (documentRef.getElementById(`${id}-compare-value`)?.value ?? node.data?.compareValue ?? '');
+            const valueText = stringifyControlValue(valueInput);
+            const compareText = stringifyControlValue(compareInput);
+            const result = evaluateControlCondition(mode, valueInput, compareInput);
+            node.data = node.data || {};
+            node.data.conditionMode = mode;
+            node.data.conditionValue = documentRef.getElementById(`${id}-condition-value`)?.value ?? valueText;
+            node.data.compareValue = documentRef.getElementById(`${id}-compare-value`)?.value ?? compareText;
+            node.data.lastResult = result;
+            node.data.text = valueText;
+            node.data['true'] = result ? valueText : undefined;
+            node.data['false'] = result ? undefined : valueText;
+            node.data.lastResultText = result ? '结果：是，继续执行“是”分支' : '结果：否，继续执行“否”分支';
+            const summary = documentRef.getElementById(`${id}-control-summary`);
+            if (summary) summary.textContent = node.data.lastResultText;
+            updateAllConnections();
+            return result ? { 'true': valueText } : { 'false': valueText };
+        },
+        ControlLoop: async (node, inputs = {}) => {
+            const id = node.id;
+            const mode = documentRef.getElementById(`${id}-loop-mode`)?.value === 'inputList' ? 'inputList' : 'count';
+            const countInput = Object.prototype.hasOwnProperty.call(inputs, 'count') ? inputs.count : null;
+            const configuredCount = parseInt(countInput ?? documentRef.getElementById(`${id}-loop-count`)?.value ?? node.data?.loopCount ?? '3', 10);
+            const loopCount = Math.max(1, Math.min(100, Number.isFinite(configuredCount) ? configuredCount : 3));
+            const valueInput = Object.prototype.hasOwnProperty.call(inputs, 'value')
+                ? inputs.value
+                : (documentRef.getElementById(`${id}-loop-value`)?.value ?? node.data?.loopValue ?? '');
+            const inputItems = getTextInputList(valueInput);
+            const items = mode === 'inputList'
+                ? (inputItems.length > 0 ? inputItems : splitLoopTextValue(valueInput))
+                : Array.from({ length: loopCount }, (_, index) => {
+                    const source = inputItems.length > 0 ? inputItems[index % inputItems.length] : stringifyControlValue(valueInput);
+                    return source || String(index + 1);
+                });
+            const limitedItems = items.slice(0, 100);
+            node.data = node.data || {};
+            node.data.loopMode = mode;
+            node.data.loopCount = loopCount;
+            node.data.loopValue = documentRef.getElementById(`${id}-loop-value`)?.value ?? stringifyControlValue(valueInput);
+            node.data.items = limitedItems;
+            node.data.loop = limitedItems.slice();
+            node.data.done = limitedItems.length > 0 ? `已循环 ${limitedItems.length} 次` : '没有可循环项';
+            node.data.lastResultText = node.data.done;
+            const summary = documentRef.getElementById(`${id}-loop-summary`);
+            if (summary) summary.textContent = node.data.lastResultText;
+            updateAllConnections();
+            return { loop: limitedItems.slice(), done: node.data.done };
         },
         ImagePreview: async (node, inputs) => {
             const { id } = node;

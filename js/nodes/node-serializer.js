@@ -225,6 +225,22 @@ export function createNodeSerializer({ state, documentRef }) {
                 serialized.mergeOutputEnabled = mergeOutputEnabled;
                 serialized.parts = Array.isArray(node.data?.parts) ? node.data.parts.slice() : [];
             }
+            if (node.type === 'ControlCondition') {
+                serialized.conditionMode = documentRef.getElementById(`${id}-condition-mode`)?.value || node.data?.conditionMode || 'truthy';
+                serialized.conditionValue = documentRef.getElementById(`${id}-condition-value`)?.value ?? node.data?.conditionValue ?? '';
+                serialized.compareValue = documentRef.getElementById(`${id}-compare-value`)?.value ?? node.data?.compareValue ?? '';
+                serialized.lastResult = node.data?.lastResult === true;
+                serialized.lastResultText = node.data?.lastResultText || '';
+                serialized.text = node.data?.text || '';
+            }
+            if (node.type === 'ControlLoop') {
+                serialized.loopMode = documentRef.getElementById(`${id}-loop-mode`)?.value || node.data?.loopMode || 'count';
+                serialized.loopCount = Math.max(1, Math.min(100, parseInt(documentRef.getElementById(`${id}-loop-count`)?.value ?? node.data?.loopCount ?? '3', 10) || 3));
+                serialized.loopValue = documentRef.getElementById(`${id}-loop-value`)?.value ?? node.data?.loopValue ?? '';
+                serialized.items = Array.isArray(node.data?.items) ? node.data.items.slice() : [];
+                serialized.done = node.data?.done || '';
+                serialized.lastResultText = node.data?.lastResultText || '';
+            }
             if (node.type === 'CustomParams') {
                 serialized.params = Array.from(documentRef.querySelectorAll(`#${id}-params-list [data-param-row]`))
                     .map((row) => ({
