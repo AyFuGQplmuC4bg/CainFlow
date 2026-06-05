@@ -1,11 +1,16 @@
 /* Component entry point for node-specific styling. */
 
+.node-port.is-hidden-by-collapse {
+    display: none;
+}
+
 .node-concurrent-status-panel {
     position: absolute;
-    top: -42px;
-    right: 8px;
-    left: auto;
-    bottom: auto;
+    top: auto;
+    left: 50%;
+    right: auto;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%);
     z-index: 90;
     box-sizing: border-box;
     min-height: 30px;
@@ -52,12 +57,12 @@
 
 .node-concurrent-status-grid {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: wrap-reverse;
     justify-content: center;
     gap: 5px;
     align-items: center;
     min-width: 14px;
-    max-width: 122px;
+    max-width: 90px;
 }
 
 .node-concurrent-status-dot {

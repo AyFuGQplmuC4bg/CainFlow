@@ -33,6 +33,7 @@ export function createCanvasInteractionsApi({
     requestAnimationFrameRef = requestAnimationFrame
 }) {
     let rafUpdate = null;
+    let panTransformRaf = null;
     const ZOOM_SETTLE_DELAY_MS = 120;
     const SHAKE_DETACH_DURATION_MS = 300;
     const SHAKE_SAMPLE_DISTANCE = 8;
@@ -49,6 +50,13 @@ export function createCanvasInteractionsApi({
     const FALLBACK_NODE_WIDTH = 180;
     const FALLBACK_NODE_HEIGHT = 120;
 
+    function alignCanvasDeltaToDevicePixel(delta) {
+        const zoom = Number(state.canvas?.zoom) || 1;
+        const dpr = Number(windowRef.devicePixelRatio) || 1;
+        const scale = zoom * dpr;
+        return scale > 0 ? Math.round(delta * scale) / scale : delta;
+    }
+
     function scheduleUIUpdate() {
         if (rafUpdate) return;
         rafUpdate = requestAnimationFrameRef(() => {
@@ -58,6 +66,17 @@ export function createCanvasInteractionsApi({
                 updateAllConnections();
             }
             rafUpdate = null;
+        });
+    }
+
+    function schedulePanTransformUpdate() {
+        if (panTransformRaf) return;
+        panTransformRaf = requestAnimationFrameRef(() => {
+            panTransformRaf = null;
+            viewportApi.updateCanvasTransform({
+                updateConnections: false,
+                dispatchTransformEvent: false
+            });
         });
     }
 
@@ -89,14 +108,18 @@ export function createCanvasInteractionsApi({
         }, 0) || targets.length;
 
         targets.forEach((target) => {
-            const textarea = target?.el;
-            if (!textarea?.isConnected) return;
+            const resizeEl = target?.el;
+            if (!resizeEl?.isConnected) return;
             const weight = Math.max(1, Number(target.weight) || Number(target.startHeight) || 1);
             const ratio = weight / totalWeight;
             const minHeight = Math.max(0, Number(target.minHeight) || 0);
             const startHeight = Math.max(minHeight, Number(target.startHeight) || minHeight);
-            const nextHeight = Math.max(minHeight, startHeight + delta * ratio);
-            textarea.style.height = `${Math.round(nextHeight)}px`;
+            const rawMaxHeight = Number(target.maxHeight);
+            const maxHeight = Number.isFinite(rawMaxHeight) && rawMaxHeight > 0
+                ? rawMaxHeight
+                : Infinity;
+            const nextHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + delta * ratio));
+            resizeEl.style.height = `${Math.round(nextHeight)}px`;
         });
     }
 
@@ -454,8 +477,9 @@ export function createCanvasInteractionsApi({
         });
 
         windowRef.addEventListener('mousemove', (e) => {
-            state.mouseCanvas = viewportApi.screenToCanvas(e.clientX, e.clientY);
-
+            if (!state.canvas.isPanning) {
+                state.mouseCanvas = viewportApi.screenToCanvas(e.clientX, e.clientY);
+            }
             if (state.isCutting) {
                 const pos = viewportApi.screenToCanvas(e.clientX, e.clientY);
                 const prevPos = state.cutPath[state.cutPath.length - 1];
@@ -499,7 +523,7 @@ export function createCanvasInteractionsApi({
             if (state.canvas.isPanning) {
                 state.canvas.x = state.canvas.canvasStart.x + (e.clientX - state.canvas.panStart.x);
                 state.canvas.y = state.canvas.canvasStart.y + (e.clientY - state.canvas.panStart.y);
-                viewportApi.updateCanvasTransform({ updateConnections: false });
+                schedulePanTransformUpdate();
             }
             if (state.marquee) {
                 state.marquee.endX = e.clientX;
@@ -580,15 +604,28 @@ export function createCanvasInteractionsApi({
                 const pos = viewportApi.screenToCanvas(e.clientX, e.clientY);
                 const dx = pos.x - state.dragging.startX;
                 const dy = pos.y - state.dragging.startY;
+                const hasDragMovement = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+
+                if (hasDragMovement && !state.dragging.interactionVisualsActive) {
+                    state.dragging.interactionVisualsActive = true;
+                    documentRef.body.classList.add('is-interacting');
+                    documentRef.getElementById('connections-group').classList.add('is-interacting');
+                    for (const nodeId of state.dragging.nodes) {
+                        state.nodes.get(nodeId)?.el?.classList.add('is-interacting');
+                    }
+                }
 
                 for (const nodeId of state.dragging.nodes) {
                     const node = state.nodes.get(nodeId);
                     if (state.dragging.isCloneDrag !== true && isNodeRunning(nodeId)) continue;
                     if (node) {
                         const startPos = state.dragging.startPositions.get(nodeId);
-                        node.x = startPos.x + dx;
-                        node.y = startPos.y + dy;
-                        node.el.style.transform = `translate(${dx}px, ${dy}px)`;
+                        const visualDx = alignCanvasDeltaToDevicePixel(dx);
+                        const visualDy = alignCanvasDeltaToDevicePixel(dy);
+                        node.x = startPos.x + visualDx;
+                        node.y = startPos.y + visualDy;
+                        node.el.style.setProperty('--node-drag-x', `${visualDx}px`);
+                        node.el.style.setProperty('--node-drag-y', `${visualDy}px`);
                     }
                 }
                 updateShakeDetach(state.dragging, pos);
@@ -706,7 +743,9 @@ export function createCanvasInteractionsApi({
                     if (node) {
                         node.el.style.left = node.x + 'px';
                         node.el.style.top = node.y + 'px';
-                        node.el.style.transform = '';
+                        node.el.style.setProperty('--node-drag-x', '0px');
+                        node.el.style.setProperty('--node-drag-y', '0px');
+                        node.el.style.removeProperty('transform');
                         node.el.classList.remove('is-interacting', 'connection-shake-armed');
                         node.el.style.removeProperty('--connection-shake-progress');
                     }

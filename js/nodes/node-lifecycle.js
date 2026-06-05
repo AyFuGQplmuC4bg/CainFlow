@@ -2,7 +2,7 @@
  * 管理节点的创建、删除、选择、启停与尺寸自适应等生命周期行为。
  */
 import { NODE_DEFAULT_TYPES } from '../core/state.js';
-import { cleanupElementResources, splitTextForTextSplitNode } from '../core/common-utils.js';
+import { cleanupElementResources } from '../core/common-utils.js';
 import {
     normalizeConcurrentRequestStatusPayload,
     renderConcurrentRequestStatusPanel
@@ -555,13 +555,6 @@ export function createNodeLifecycleApi({
         const minWidth = getPx(style, 'min-width');
         const minHeight = getPx(style, 'min-height');
 
-        if (el.classList.contains('text-split-preview')) {
-            return {
-                width: Math.ceil(minWidth + marginX),
-                height: Math.ceil(minHeight + marginY)
-            };
-        }
-
         if (isResizableMediaElement(el)) {
             return {
                 width: Math.ceil(minWidth + marginX),
@@ -745,7 +738,9 @@ export function createNodeLifecycleApi({
         }
         const bodySize = body && !isCollapsed ? getElementMinimumSize(body) : { width: 0, height: 0 };
         const bodyRenderedHeight = body && !isCollapsed
-            ? Math.max(body.offsetHeight || 0, body.scrollHeight || 0)
+            ? (hasScrollableResultContent(body)
+                ? bodySize.height
+                : Math.max(body.offsetHeight || 0, body.scrollHeight || 0))
             : 0;
 
         el.style.height = originalElHeight;
@@ -1000,12 +995,20 @@ export function createNodeLifecycleApi({
         const initialWidth = clampNodeWidthToDefault(effectiveRestoreData?.width, config);
         el.style.width = initialWidth + 'px';
 
+        const restoredHeight = Number(effectiveRestoreData?.height);
+        const hasRestoredHeight = Number.isFinite(restoredHeight) && restoredHeight > 0;
+        const isRestoringCollapsed = effectiveRestoreData?.collapsed === true;
+        const initialHeightSource = isRestoringCollapsed && hasRestoredHeight
+            ? restoredHeight
+            : Math.max(hasRestoredHeight ? restoredHeight : 0, getDefaultNodeHeight(config));
         const clampedInitialHeight = clampNodeHeight(
-            Math.max(Number(effectiveRestoreData?.height) || 0, getDefaultNodeHeight(config)),
+            initialHeightSource,
             config,
-            { isRestore: Boolean(effectiveRestoreData?.height) }
+            { isRestore: hasRestoredHeight }
         );
-        const initialHeight = Math.max(clampedInitialHeight || 0, getDefaultNodeHeight(config));
+        const initialHeight = isRestoringCollapsed && hasRestoredHeight
+            ? Math.max(clampedInitialHeight || 0, 1)
+            : Math.max(clampedInitialHeight || 0, getDefaultNodeHeight(config));
         if (initialHeight) el.style.height = initialHeight + 'px';
 
         try {
@@ -1065,6 +1068,10 @@ export function createNodeLifecycleApi({
             isClone: effectiveRestoreData?.isClone === true && typeof effectiveRestoreData?.cloneSourceId === 'string' && !!effectiveRestoreData.cloneSourceId,
             cloneSourceId: typeof effectiveRestoreData?.cloneSourceId === 'string' ? effectiveRestoreData.cloneSourceId : ''
         };
+        const restoredCollapsedExpandedHeight = Number(effectiveRestoreData?.collapsedExpandedHeight);
+        if (nodeData.collapsed && Number.isFinite(restoredCollapsedExpandedHeight) && restoredCollapsedExpandedHeight > 0) {
+            nodeData.collapsedExpandedHeight = Math.round(restoredCollapsedExpandedHeight);
+        }
         if (normalizedType === 'ImageCompare') {
             const restoredCompareA = typeof effectiveRestoreData?.compareImageA === 'string' && effectiveRestoreData.compareImageA.trim()
                 ? effectiveRestoreData.compareImageA
@@ -1236,21 +1243,16 @@ export function createNodeLifecycleApi({
             nodeData.data.text = effectiveRestoreData?.text || effectiveRestoreData?.lastText || '';
             nodeData.data.delimiter = effectiveRestoreData?.delimiter || '';
             const restoredParts = Array.isArray(effectiveRestoreData?.parts) ? effectiveRestoreData.parts.slice() : [];
-            const fallbackOutputCount = Math.max(1, restoredParts.length || splitTextForTextSplitNode(
-                nodeData.data.text,
-                effectiveRestoreData?.delimiter !== undefined ? effectiveRestoreData.delimiter : '\n\n',
-                { removeEmptyLines: effectiveRestoreData?.removeEmptyLines === true }
-            ).length);
             if (effectiveRestoreData?.mergeOutputEnabled === true) {
                 nodeData.data.outputCount = 0;
             } else if (effectiveRestoreData?.outputCount !== undefined && effectiveRestoreData.outputCount !== '') {
                 const parsedOutputCount = parseInt(effectiveRestoreData.outputCount, 10);
-                nodeData.data.outputCount = Number.isFinite(parsedOutputCount) ? Math.max(0, parsedOutputCount) : 1;
+                nodeData.data.outputCount = Number.isFinite(parsedOutputCount) ? Math.max(0, parsedOutputCount) : 0;
             } else {
-                nodeData.data.outputCount = fallbackOutputCount;
+                nodeData.data.outputCount = 0;
             }
             nodeData.data.removeEmptyLines = effectiveRestoreData?.removeEmptyLines === true;
-            nodeData.data.previewEnabled = effectiveRestoreData?.previewEnabled === true;
+            nodeData.data.previewEnabled = effectiveRestoreData?.previewEnabled !== false;
             nodeData.data.mergeOutputEnabled = effectiveRestoreData?.mergeOutputEnabled === true;
             nodeData.data.parts = nodeData.data.outputCount === 0
                 ? restoredParts
@@ -1302,10 +1304,14 @@ export function createNodeLifecycleApi({
         state.nodes.set(id, nodeData);
         if (nodeData.collapsed) {
             const collapsedMinimum = getNodeMinimumSize(nodeData);
-            if (collapsedMinimum?.minHeight) {
-                el.style.height = `${Math.round(collapsedMinimum.minHeight)}px`;
-                nodeData.height = Math.round(collapsedMinimum.minHeight);
-                nodeData.observedHeight = Math.round(collapsedMinimum.minHeight);
+            const restoredCollapsedHeight = hasRestoredHeight ? Math.round(restoredHeight) : 0;
+            const nextCollapsedHeight = restoredCollapsedHeight > 0
+                ? restoredCollapsedHeight
+                : Math.round(collapsedMinimum?.minHeight || 0);
+            if (nextCollapsedHeight > 0) {
+                el.style.height = `${nextCollapsedHeight}px`;
+                nodeData.height = nextCollapsedHeight;
+                nodeData.observedHeight = nextCollapsedHeight;
             }
         }
         el.addEventListener('load', (event) => {
@@ -1703,6 +1709,12 @@ export function createNodeLifecycleApi({
         if (getCacheSidebarActive()) {
             updateCacheUsage();
         }
+        if (state.activeNodeId && !state.nodes.has(state.activeNodeId)) {
+            state.activeNodeId = state.selectedNodes.size === 1
+                ? Array.from(state.selectedNodes)[0]
+                : null;
+        }
+        refreshNodeRelationCache();
     }
 
     function selectNode(id, isMulti) {
@@ -1720,10 +1732,71 @@ export function createNodeLifecycleApi({
             if (node) node.el.classList.remove('selected');
         } else {
             state.selectedNodes.add(id);
+            state.activeNodeId = id;
             const node = state.nodes.get(id);
-            if (node) node.el.classList.add('selected');
+            if (node) {
+                node.el.classList.add('selected');
+                if (node.el.parentElement === nodesLayer) {
+                    nodesLayer.appendChild(node.el);
+                }
+            }
+            scheduleSave();
         }
+        refreshNodeRelationCache();
         updateAllConnections();
+    }
+
+    function getRelationAnchorNodeId() {
+        if (state.selectedNodes.size === 1) {
+            const selectedNodeId = Array.from(state.selectedNodes)[0];
+            if (state.nodes.has(selectedNodeId)) return selectedNodeId;
+        }
+        if (state.activeNodeId && state.nodes.has(state.activeNodeId)) {
+            return state.activeNodeId;
+        }
+        return null;
+    }
+
+    function refreshNodeRelationCache() {
+        const anchorNodeId = getRelationAnchorNodeId();
+        if (!anchorNodeId) {
+            state.activeNodeRelationCache = {
+                anchorNodeId: null,
+                incomingNodeIds: [],
+                outgoingNodeIds: [],
+                incomingConnectionIds: [],
+                outgoingConnectionIds: [],
+                updatedAt: Date.now()
+            };
+            return state.activeNodeRelationCache;
+        }
+
+        const incomingNodeIds = [];
+        const outgoingNodeIds = [];
+        const incomingConnectionIds = [];
+        const outgoingConnectionIds = [];
+
+        state.connections.forEach((connection) => {
+            if (connection?.to?.nodeId === anchorNodeId) {
+                incomingNodeIds.push(connection.from.nodeId);
+                incomingConnectionIds.push(connection.id);
+            }
+            if (connection?.from?.nodeId === anchorNodeId) {
+                outgoingNodeIds.push(connection.to.nodeId);
+                outgoingConnectionIds.push(connection.id);
+            }
+        });
+
+        state.activeNodeId = anchorNodeId;
+        state.activeNodeRelationCache = {
+            anchorNodeId,
+            incomingNodeIds,
+            outgoingNodeIds,
+            incomingConnectionIds,
+            outgoingConnectionIds,
+            updatedAt: Date.now()
+        };
+        return state.activeNodeRelationCache;
     }
 
     function toggleNodesEnabled(nodeIds, referenceNodeId = null) {
@@ -1799,7 +1872,7 @@ export function createNodeLifecycleApi({
         return true;
     }
 
-    function cloneNode(sourceNodeId) {
+    function cloneNode(sourceNodeId, count = 1) {
         const sourceNode = state.nodes.get(sourceNodeId);
         if (!sourceNode) return null;
         if (sourceNode.isClone) {
@@ -1811,30 +1884,38 @@ export function createNodeLifecycleApi({
             return null;
         }
 
-        pushHistory();
+        const cloneCount = Math.max(1, Math.min(64, parseInt(count, 10) || 1));
         const snapshot = serializeOneNode(sourceNodeId);
         if (!snapshot) return null;
-        const newId = addNode(sourceNode.type, sourceNode.x + 36, sourceNode.y + 36, {
-            ...snapshot,
-            id: null,
-            x: sourceNode.x + 36,
-            y: sourceNode.y + 36,
-            isClone: true,
-            cloneSourceId: sourceNodeId
-        }, true);
-        if (!newId) return null;
+        pushHistory();
+        const newIds = [];
+        for (let index = 0; index < cloneCount; index += 1) {
+            const offset = 36 * (index + 1);
+            const newId = addNode(sourceNode.type, sourceNode.x + offset, sourceNode.y + offset, {
+                ...snapshot,
+                id: null,
+                x: sourceNode.x + offset,
+                y: sourceNode.y + offset,
+                isClone: true,
+                cloneSourceId: sourceNodeId
+            }, true);
+            if (newId) newIds.push(newId);
+        }
+        if (!newIds.length) return null;
 
         state.selectedNodes.forEach((nid) => {
             const node = state.nodes.get(nid);
             if (node) node.el.classList.remove('selected');
         });
         state.selectedNodes.clear();
-        state.selectedNodes.add(newId);
-        state.nodes.get(newId)?.el.classList.add('selected');
+        newIds.forEach((newId) => {
+            state.selectedNodes.add(newId);
+            state.nodes.get(newId)?.el.classList.add('selected');
+        });
         updateAllConnections();
         scheduleSave();
-        showToast('已创建克隆节点', 'success');
-        return newId;
+        showToast(cloneCount > 1 ? `已创建 ${newIds.length} 个克隆节点` : '已创建克隆节点', 'success');
+        return cloneCount > 1 ? newIds : newIds[0];
     }
 
     function detachCloneNode(nodeId) {
@@ -1871,6 +1952,7 @@ export function createNodeLifecycleApi({
         removeNode,
         detachNodesFromConnections,
         selectNode,
+        refreshNodeRelationCache,
         toggleNodesEnabled,
         renameNode,
         cloneNode,

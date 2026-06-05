@@ -55,6 +55,7 @@ export function createInitialState() {
         dragging: null,
         connectionInsertPreview: null,
         connectionCreatePopup: null,
+        batchConnectionMode: null,
         connecting: null,
         resizing: null,
         marquee: null,
@@ -71,6 +72,15 @@ export function createInitialState() {
         lastFocusTime: Date.now(),
         mouseCanvas: { x: 0, y: 0 },
         selectedNodes: new Set(),
+        activeNodeId: null,
+        activeNodeRelationCache: {
+            anchorNodeId: null,
+            incomingNodeIds: [],
+            outgoingNodeIds: [],
+            incomingConnectionIds: [],
+            outgoingConnectionIds: [],
+            updatedAt: 0
+        },
         runningNodeIds: new Set(),
         runningNodeCancelHandlers: new Map(),
         activeRunCount: 0,

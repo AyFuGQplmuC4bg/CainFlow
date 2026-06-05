@@ -29,6 +29,7 @@ export function createNodeDomBindingsApi({
     selectNode,
     toggleNodesEnabled,
     cancelRunningNode = null,
+    handleBatchConnectionNodeMouseDown = null,
     finishConnection,
     resumeVideoGeneration = async () => {},
     resumeImageGeneration = async () => {},
@@ -81,6 +82,42 @@ export function createNodeDomBindingsApi({
         } else {
             viewportApi.refreshNodeTextRendering();
         }
+    }
+
+    function hasPortConnection(nodeId, portName, direction) {
+        if (!nodeId || !portName || !direction) return false;
+        if (direction === 'input') {
+            return state.connections.some((connection) => (
+                connection.to.nodeId === nodeId &&
+                connection.to.port === portName
+            ));
+        }
+        if (direction === 'output') {
+            return state.connections.some((connection) => (
+                connection.from.nodeId === nodeId &&
+                connection.from.port === portName
+            ));
+        }
+        return false;
+    }
+
+    function syncCollapsedUnusedPorts(nodeId) {
+        const node = state.nodes.get(nodeId);
+        const ports = node?.el?.querySelectorAll?.('.node-port');
+        if (!ports?.length) return;
+
+        const isCollapsed = node.collapsed === true || node.el.classList.contains('collapsed');
+        ports.forEach((portEl) => {
+            const direction = portEl.dataset.direction || '';
+            const portName = portEl.dataset.port || '';
+            const shouldHideForCollapse = isCollapsed && !hasPortConnection(nodeId, portName, direction);
+            portEl.classList.toggle('is-hidden-by-collapse', shouldHideForCollapse);
+            portEl.setAttribute('aria-hidden', shouldHideForCollapse ? 'true' : 'false');
+        });
+    }
+
+    function syncAllCollapsedUnusedPorts() {
+        state.nodes.forEach((_, nodeId) => syncCollapsedUnusedPorts(nodeId));
     }
 
     function syncTextNodeData(id) {
@@ -168,18 +205,12 @@ export function createNodeDomBindingsApi({
     }
 
     function normalizeTextSplitOutputCountValue(value) {
-        const parsed = parseInt(value ?? '1', 10);
-        return Number.isFinite(parsed) ? Math.max(0, parsed) : 1;
+        const parsed = parseInt(value ?? '0', 10);
+        return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
     }
 
     function sanitizeTextSplitOutputCountValue(value) {
         return String(value ?? '').replace(/\D/g, '');
-    }
-
-    function getTextSplitOutputCount(id) {
-        const outputCountInput = documentRef.getElementById(`${id}-output-count`);
-        const node = state.nodes.get(id);
-        return normalizeTextSplitOutputCountValue(outputCountInput?.value ?? node?.data?.outputCount ?? 1);
     }
 
     function isTextSplitMergeOutputEnabled(id) {
@@ -210,10 +241,50 @@ export function createNodeDomBindingsApi({
         return outputCount === 0 ? Math.max(1, parts.length) : Math.max(1, outputCount);
     }
 
-    function getCurrentTextSplitRenderedOutputCount(id) {
-        const outputCount = getTextSplitOutputCount(id);
-        if (outputCount > 0) return outputCount;
+    function getTextSplitUiState(id) {
         const node = state.nodes.get(id);
+        const delimiterInput = documentRef.getElementById(`${id}-delimiter`);
+        const outputCountInput = documentRef.getElementById(`${id}-output-count`);
+        const removeEmptyLinesInput = documentRef.getElementById(`${id}-remove-empty-lines`);
+        const previewEnabledInput = documentRef.getElementById(`${id}-preview-enabled`);
+        const mergeOutputEnabledInput = documentRef.getElementById(`${id}-merge-output-enabled`);
+        if (!node || !delimiterInput) return null;
+
+        const mergeOutputEnabled = mergeOutputEnabledInput
+            ? mergeOutputEnabledInput.checked === true
+            : node.data?.mergeOutputEnabled === true;
+        const configuredOutputCount = normalizeTextSplitOutputCountValue(outputCountInput?.value ?? node.data?.outputCount ?? 0);
+        const outputCount = mergeOutputEnabled ? 0 : configuredOutputCount;
+        const removeEmptyLines = removeEmptyLinesInput
+            ? removeEmptyLinesInput.checked === true
+            : node.data?.removeEmptyLines === true;
+        const previewEnabled = previewEnabledInput
+            ? previewEnabledInput.checked === true
+            : node.data?.previewEnabled !== false;
+        const rawParts = splitTextForTextSplitNode(node.data?.text || '', delimiterInput.value, { removeEmptyLines });
+        const parts = limitTextSplitParts(rawParts, outputCount);
+        const renderedOutputCount = mergeOutputEnabled
+            ? 1
+            : getTextSplitRenderedOutputCount(parts, outputCount);
+
+        return {
+            delimiter: delimiterInput.value,
+            outputCount,
+            removeEmptyLines,
+            previewEnabled,
+            mergeOutputEnabled,
+            parts,
+            renderedOutputCount
+        };
+    }
+
+    function getCurrentTextSplitRenderedOutputCount(id) {
+        const uiState = getTextSplitUiState(id);
+        if (uiState) return uiState.renderedOutputCount;
+        const node = state.nodes.get(id);
+        const outputCount = normalizeTextSplitOutputCountValue(node?.data?.outputCount ?? 0);
+        if (node?.data?.mergeOutputEnabled === true) return 1;
+        if (outputCount > 0) return outputCount;
         const parts = Array.isArray(node?.data?.parts) ? node.data.parts : [];
         return Math.max(1, parts.length);
     }
@@ -256,6 +327,7 @@ export function createNodeDomBindingsApi({
         if (!dot) return;
 
         dot.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
             const isPanAction = e.button === 1 || (e.button === 0 && e.altKey);
             if (isPanAction) return;
             e.stopPropagation();
@@ -300,6 +372,7 @@ export function createNodeDomBindingsApi({
 
                 pushHistory();
                 state.connections = state.connections.filter((connection) => connection.id !== existingInputConnection.id);
+                syncAllCollapsedUnusedPorts();
                 updateAllConnections();
                 updatePortStyles();
                 scheduleSave();
@@ -817,6 +890,7 @@ export function createNodeDomBindingsApi({
             connection.from.nodeId !== nodeId || validPortSet.has(connection.from.port)
         ));
         const removedConnections = beforeConnectionCount !== state.connections.length;
+        syncCollapsedUnusedPorts(nodeId);
         updateAllConnections();
         updatePortStyles();
         if (removedConnections) onConnectionsChanged();
@@ -874,6 +948,7 @@ export function createNodeDomBindingsApi({
             connection.to.nodeId !== nodeId || validPortSet.has(connection.to.port)
         ));
         const removedConnections = beforeConnectionCount !== state.connections.length;
+        syncCollapsedUnusedPorts(nodeId);
         updateAllConnections();
         updatePortStyles();
         if (removedConnections) onConnectionsChanged();
@@ -915,6 +990,7 @@ export function createNodeDomBindingsApi({
             connection.to.nodeId !== nodeId || validPortSet.has(connection.to.port)
         ));
         const removedConnections = beforeConnectionCount !== state.connections.length;
+        syncCollapsedUnusedPorts(nodeId);
         updateAllConnections();
         updatePortStyles();
         if (removedConnections) onConnectionsChanged();
@@ -928,19 +1004,19 @@ export function createNodeDomBindingsApi({
         });
     }
 
-    function toggleNodeCollapsed(id) {
+    function applyNodeCollapsedState(id, nextCollapsed) {
         const node = state.nodes.get(id);
-        if (!node?.el) return;
-        if (isNodeRunning(id)) {
-            showToast('节点正在运行，暂不能折叠或展开', 'warning');
-            return;
-        }
+        if (!node?.el) return false;
 
         const body = node.el.querySelector('.node-body');
-        if (!body) return;
+        if (!body) return false;
+
+        if (node.collapsed === nextCollapsed && node.el.classList.contains('collapsed') === nextCollapsed) {
+            syncCollapsedUnusedPorts(id);
+            return false;
+        }
 
         const currentHeight = node.el.offsetHeight || Number(node.height) || 0;
-        const nextCollapsed = !node.collapsed;
         if (!nextCollapsed && Number.isFinite(node.collapsedExpandedHeight) && node.collapsedExpandedHeight > 0) {
             node.el.style.height = `${Math.round(node.collapsedExpandedHeight)}px`;
             node.height = Math.round(node.collapsedExpandedHeight);
@@ -952,6 +1028,7 @@ export function createNodeDomBindingsApi({
         node.collapsed = nextCollapsed;
         node.el.classList.toggle('collapsed', nextCollapsed);
         body.classList.toggle('is-collapsed', nextCollapsed);
+        syncCollapsedUnusedPorts(id);
         const collapseButton = node.el.querySelector('.node-collapse-btn');
         if (collapseButton) {
             collapseButton.classList.toggle('is-collapsed', nextCollapsed);
@@ -978,10 +1055,42 @@ export function createNodeDomBindingsApi({
         node.observedWidth = Math.round(currentWidth);
         node.observedHeight = Math.round(nextHeight);
 
+        return true;
+    }
+
+    function getNodeCollapseTargetIds(id) {
+        if (!state.selectedNodes?.has(id)) return [id];
+        return Array.from(state.selectedNodes).filter((nodeId) => state.nodes.has(nodeId));
+    }
+
+    function toggleNodeCollapsed(id) {
+        const node = state.nodes.get(id);
+        if (!node?.el) return;
+
+        const targetIds = getNodeCollapseTargetIds(id);
+        const blockedIds = targetIds.filter((nodeId) => isNodeRunning(nodeId));
+        if (blockedIds.length > 0) {
+            showToast(blockedIds.length === targetIds.length
+                ? '节点正在运行，暂不能折叠或展开'
+                : `已跳过 ${blockedIds.length} 个正在运行的节点`, 'warning');
+        }
+
+        const nextCollapsed = !node.collapsed;
+        const changedIds = targetIds
+            .filter((nodeId) => !blockedIds.includes(nodeId))
+            .filter((nodeId) => applyNodeCollapsedState(nodeId, nextCollapsed));
+
+        if (changedIds.length === 0) return;
+
         updateAllConnections();
+        updatePortStyles();
         const requestFrame = documentRef.defaultView?.requestAnimationFrame;
         if (typeof requestFrame === 'function') {
-            requestFrame(() => updateAllConnections());
+            requestFrame(() => {
+                changedIds.forEach((nodeId) => syncCollapsedUnusedPorts(nodeId));
+                updateAllConnections();
+                updatePortStyles();
+            });
         }
         scheduleSave();
     }
@@ -989,61 +1098,49 @@ export function createNodeDomBindingsApi({
     function syncTextSplitNodeData(id, options = {}) {
         const { refreshPorts = true } = options;
         const node = state.nodes.get(id);
-        const delimiterInput = documentRef.getElementById(`${id}-delimiter`);
         const outputCountInput = documentRef.getElementById(`${id}-output-count`);
-        const removeEmptyLinesInput = documentRef.getElementById(`${id}-remove-empty-lines`);
-        const previewEnabledInput = documentRef.getElementById(`${id}-preview-enabled`);
-        const mergeOutputEnabledInput = documentRef.getElementById(`${id}-merge-output-enabled`);
-        if (!node || !delimiterInput) return;
+        const splitState = getTextSplitUiState(id);
+        if (!node || !splitState) return;
 
-        const outputCount = getTextSplitOutputCount(id);
-        if (outputCountInput) {
-            outputCountInput.value = String(outputCount);
+        if (outputCountInput) outputCountInput.value = String(splitState.outputCount);
+        syncTextSplitOutputCountControlState(id, splitState.mergeOutputEnabled);
+
+        node.data.delimiter = splitState.delimiter;
+        node.data.outputCount = splitState.outputCount;
+        node.data.removeEmptyLines = splitState.removeEmptyLines;
+        node.data.previewEnabled = splitState.previewEnabled;
+        node.data.mergeOutputEnabled = splitState.mergeOutputEnabled;
+        node.data.parts = splitState.parts;
+        if (splitState.mergeOutputEnabled) {
+            node.data.texts = splitState.parts.slice();
+        } else {
+            delete node.data.texts;
         }
-        const removeEmptyLines = removeEmptyLinesInput?.checked === true;
-        const previewEnabled = previewEnabledInput?.checked === true;
-        const mergeOutputEnabled = mergeOutputEnabledInput?.checked === true;
-        syncTextSplitOutputCountControlState(id, mergeOutputEnabled);
-        const effectiveOutputCount = mergeOutputEnabled ? 0 : outputCount;
-        if (outputCountInput) {
-            outputCountInput.value = String(effectiveOutputCount);
-        }
-        const rawParts = splitTextForTextSplitNode(node.data?.text || '', delimiterInput.value, { removeEmptyLines });
-        const parts = limitTextSplitParts(rawParts, effectiveOutputCount);
-        const renderedOutputCount = getTextSplitRenderedOutputCount(parts, effectiveOutputCount);
-        node.data.delimiter = delimiterInput.value;
-        node.data.outputCount = effectiveOutputCount;
-        node.data.removeEmptyLines = removeEmptyLines;
-        node.data.previewEnabled = previewEnabled;
-        node.data.mergeOutputEnabled = mergeOutputEnabled;
-        node.data.parts = parts;
-        node.data.texts = mergeOutputEnabled ? parts.slice() : [];
-        if (!mergeOutputEnabled) delete node.data.texts;
         Object.keys(node.data).forEach((key) => {
             if (/^part_\d+$/.test(key)) delete node.data[key];
         });
-        parts.forEach((part, index) => {
+        splitState.parts.forEach((part, index) => {
             node.data[`part_${index + 1}`] = part;
         });
 
         const summary = documentRef.getElementById(`${id}-split-summary`);
         if (summary) {
-            const delimiterText = delimiterInput.value
-                ? `按 ${JSON.stringify(delimiterInput.value)} 分割`
+            const delimiterText = splitState.delimiter
+                ? `按 ${JSON.stringify(splitState.delimiter)} 分割`
                 : '未设置分隔字符串，整段作为一个输出';
-            const emptyLineText = removeEmptyLines ? '，已删除空行' : '';
-            const outputText = effectiveOutputCount === 0
-                ? `，自动生成 ${renderedOutputCount} 个输出端口`
-                : `，当前配置 ${effectiveOutputCount} 个输出端口`;
-            const mergeText = mergeOutputEnabled ? '，多合一输出为 1 个端口' : outputText;
+            const emptyLineText = splitState.removeEmptyLines ? '，已删除空行' : '';
+            const outputText = splitState.outputCount === 0
+                ? `，自动生成 ${splitState.renderedOutputCount} 个输出端口`
+                : `，当前配置 ${splitState.outputCount} 个输出端口`;
+            const mergeText = splitState.mergeOutputEnabled ? '，多合一输出为 1 个端口' : outputText;
             summary.textContent = `${delimiterText}${emptyLineText}${mergeText}`;
         }
 
         const preview = documentRef.getElementById(`${id}-split-preview`);
         if (preview) {
-            preview.classList.toggle('hidden', !previewEnabled);
-            preview.innerHTML = parts.length > 0
-                ? parts.map((part, index) => `
+            preview.closest('.text-split-preview-field')?.classList.toggle('hidden', !splitState.previewEnabled);
+            preview.innerHTML = splitState.parts.length > 0
+                ? splitState.parts.map((part, index) => `
                     <div class="text-split-preview-item">
                         <div class="text-split-preview-label">片段 ${index + 1}</div>
                         <pre class="text-split-preview-text">${escapeHtml(part)}</pre>
@@ -1053,7 +1150,7 @@ export function createNodeDomBindingsApi({
         }
 
         if (refreshPorts) {
-            refreshTextSplitOutputPorts(id, renderedOutputCount);
+            refreshTextSplitOutputPorts(id, splitState.renderedOutputCount);
         }
 
         const requestFrame = documentRef.defaultView?.requestAnimationFrame;
@@ -1253,7 +1350,7 @@ export function createNodeDomBindingsApi({
     function bindExpandableElementResize(nodeId, element) {
         if (!element || typeof ResizeObserver === 'undefined') return;
         const node = state.nodes.get(nodeId);
-        if (node?.type === 'Text' || node?.type === 'TextSplit') return;
+        if (node?.type === 'Text') return;
 
         let frameId = null;
         const scheduleFit = () => {
@@ -1278,38 +1375,6 @@ export function createNodeDomBindingsApi({
         });
 
         setTimeout(scheduleFit, 0);
-    }
-
-    function bindTextareaHeightPersistence(element) {
-        if (!element || element.dataset.heightPersistenceBound === '1' || typeof ResizeObserver === 'undefined') return;
-        element.dataset.heightPersistenceBound = '1';
-
-        let observedHeight = Math.round(element.offsetHeight || 0);
-        let frameId = null;
-        const observer = new ResizeObserver(() => {
-            const nextHeight = Math.round(element.offsetHeight || 0);
-            if (!nextHeight || Math.abs(nextHeight - observedHeight) <= 1) return;
-            observedHeight = nextHeight;
-            const nodeEl = element.closest('.node');
-            const nodeId = nodeEl?.dataset?.id;
-            if (nodeId && state.resizing?.nodeId === nodeId) return;
-            if (frameId !== null) return;
-            frameId = requestAnimationFrame(() => {
-                frameId = null;
-                if (nodeId && state.resizing?.nodeId === nodeId) return;
-                if (nodeId) fitNodeToContent(nodeId, { reason: 'textarea-resize' });
-                scheduleSave();
-            });
-        });
-        observer.observe(element);
-
-        if (!Array.isArray(element._cleanupFns)) {
-            element._cleanupFns = [];
-        }
-        element._cleanupFns.push(() => {
-            observer.disconnect();
-            if (frameId !== null) cancelAnimationFrame(frameId);
-        });
     }
 
     function syncImageGenerateResolutionOptions(id) {
@@ -1486,19 +1551,28 @@ export function createNodeDomBindingsApi({
         return Boolean(el?.matches?.(NODE_RESIZABLE_MEDIA_SELECTOR));
     }
 
+    function getResizeTargetBaseMetrics(el) {
+        const style = getComputedStyle(el);
+        const minHeight = getPx(style, 'min-height');
+        const measuredHeight = el.getBoundingClientRect?.().height ||
+            el.offsetHeight ||
+            parseFloat(el.style.height || '0') ||
+            minHeight;
+        return {
+            style,
+            minHeight,
+            startHeight: Math.max(minHeight, measuredHeight || 0)
+        };
+    }
+
     function collectNodeTextareaResizeTargets(el) {
         const body = el?.querySelector?.('.node-body');
         if (!body) return [];
-        return Array.from(body.querySelectorAll('textarea'))
+        const textareaTargets = Array.from(body.querySelectorAll('textarea'))
             .filter(isVisibleElement)
+            .filter((textarea) => !textarea.classList.contains('text-split-delimiter'))
             .map((textarea) => {
-                const style = getComputedStyle(textarea);
-                const minHeight = getPx(style, 'min-height');
-                const measuredHeight = textarea.getBoundingClientRect?.().height ||
-                    textarea.offsetHeight ||
-                    parseFloat(textarea.style.height || '0') ||
-                    minHeight;
-                const startHeight = Math.max(minHeight, measuredHeight || 0);
+                const { minHeight, startHeight } = getResizeTargetBaseMetrics(textarea);
                 return {
                     el: textarea,
                     startHeight,
@@ -1507,6 +1581,37 @@ export function createNodeDomBindingsApi({
                 };
             })
             .filter((target) => target.startHeight > 0);
+
+        const textSplitPreviewTargets = Array.from(body.querySelectorAll('.text-split-preview-text'))
+            .filter(isVisibleElement)
+            .map((previewText) => {
+                const { style, minHeight, startHeight } = getResizeTargetBaseMetrics(previewText);
+                const borderY = getPx(style, 'border-top-width') + getPx(style, 'border-bottom-width');
+                const contentHeight = Math.max(minHeight, (previewText.scrollHeight || startHeight) + borderY);
+                const growthCapacity = Math.max(0, contentHeight - startHeight);
+                return {
+                    el: previewText,
+                    startHeight,
+                    minHeight,
+                    weight: Math.max(1, growthCapacity)
+                };
+            })
+            .filter((target) => target.startHeight > 0);
+
+        return textareaTargets.concat(textSplitPreviewTargets);
+    }
+
+    function getResizeTargetsMaxNodeHeight(startHeight, targets) {
+        if (!Array.isArray(targets) || !targets.length) return null;
+        let extraHeight = 0;
+        for (const target of targets) {
+            const maxHeight = Number(target?.maxHeight);
+            if (!Number.isFinite(maxHeight) || maxHeight <= 0) return null;
+            const minHeight = Math.max(0, Number(target.minHeight) || 0);
+            const startTargetHeight = Math.max(minHeight, Number(target.startHeight) || minHeight);
+            extraHeight += Math.max(0, maxHeight - startTargetHeight);
+        }
+        return Math.max(0, Number(startHeight) || 0) + extraHeight;
     }
 
     function measureTextWidth(text, font) {
@@ -1597,10 +1702,6 @@ export function createNodeDomBindingsApi({
         const minHeight = getPx(style, 'min-height');
         const marginY = getOuterExtras(style, 'y');
 
-        if (el.classList.contains('text-split-preview')) {
-            return Math.ceil(minHeight + marginY);
-        }
-
         if (el.classList.contains('chat-response-wrapper') || el.classList.contains('chat-response-area')) {
             return Math.ceil(minHeight + marginY);
         }
@@ -1671,7 +1772,23 @@ export function createNodeDomBindingsApi({
     }
 
     function bindNodeInteractions({ id, type, el }) {
+        const stopBatchConnectionFollowupClick = (event) => {
+            if (!state.batchConnectionMode?.sourceNodeId) return;
+            event.preventDefault();
+            event.stopPropagation();
+        };
+
+        el.addEventListener('click', stopBatchConnectionFollowupClick, true);
+        el.addEventListener('dblclick', stopBatchConnectionFollowupClick, true);
+
         el.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+
+            if (typeof handleBatchConnectionNodeMouseDown === 'function' &&
+                handleBatchConnectionNodeMouseDown(e, id)) {
+                return;
+            }
+
             const target = e.target;
 
             if (target.closest('.node-delete, .node-bypass-btn')) return;
@@ -1679,7 +1796,7 @@ export function createNodeDomBindingsApi({
             const interactiveSelector = 'input, textarea, select, button, .node-select, .port, .node-resize-handle, [contenteditable="true"], .chat-response-area, .preview-controls, .workflow-action-btn';
             const isInteractive = target.closest(interactiveSelector);
 
-            const dragAreaSelector = '.file-drop-zone, .preview-container, .save-preview-container, .node-header, .node-glass-bg';
+            const dragAreaSelector = '.node-header, .node-glass-bg';
             const isForceDrag = target.matches(dragAreaSelector) || (target.parentElement && target.parentElement.matches(dragAreaSelector));
 
             if (isInteractive && !isForceDrag) return;
@@ -1717,7 +1834,6 @@ export function createNodeDomBindingsApi({
                 const node = state.nodes.get(nid);
                 if (node) {
                     startPositions.set(nid, { x: node.x, y: node.y });
-                    node.el.classList.add('is-interacting');
                 }
             });
 
@@ -1761,8 +1877,6 @@ export function createNodeDomBindingsApi({
             };
 
             pushHistory();
-            documentRef.body.classList.add('is-interacting');
-            documentRef.getElementById('connections-group').classList.add('is-interacting');
         });
 
         el.querySelector('.node-delete').addEventListener('click', (e) => {
@@ -1798,6 +1912,7 @@ export function createNodeDomBindingsApi({
         });
 
         el.querySelector('.node-resize-handle').addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
             const isPanAction = e.button === 1 || (e.button === 0 && e.altKey);
             if (isPanAction) return;
             e.stopPropagation();
@@ -1813,6 +1928,13 @@ export function createNodeDomBindingsApi({
             const currentWidth = el.offsetWidth || Number(node?.width) || defaultMinimum.minWidth;
             const currentHeight = el.offsetHeight || Number(node?.height) || defaultMinimum.minHeight;
 
+            const textareaResizeTargets = collectNodeTextareaResizeTargets(el);
+            const resizeTargetMaxHeight = getResizeTargetsMaxNodeHeight(currentHeight, textareaResizeTargets);
+            const configuredMaxHeight = Number(node?.maxHeight);
+            const maxHeight = Number.isFinite(configuredMaxHeight) && configuredMaxHeight > 0
+                ? Math.min(configuredMaxHeight, resizeTargetMaxHeight || configuredMaxHeight)
+                : resizeTargetMaxHeight;
+
             state.resizing = {
                 nodeId: id,
                 startX: e.clientX,
@@ -1821,8 +1943,8 @@ export function createNodeDomBindingsApi({
                 startHeight: currentHeight,
                 minWidth: defaultMinimum.minWidth,
                 minHeight: defaultMinimum.minHeight,
-                maxHeight: node?.maxHeight || null,
-                textareaResizeTargets: collectNodeTextareaResizeTargets(el)
+                maxHeight,
+                textareaResizeTargets
             };
 
             pushHistory();
@@ -1841,6 +1963,7 @@ export function createNodeDomBindingsApi({
         bindZoomSettleGuard(el);
         bindCustomNodeSelects(el);
         lockCloneNodeEditing(id, el);
+        syncCollapsedUnusedPorts(id);
 
         if (type === 'ImageImport') setupImageImport(id, el);
         else if (type === 'Text') {
@@ -2209,9 +2332,6 @@ export function createNodeDomBindingsApi({
             const isExpandable = input.closest('.node-field-expand');
             if (input.tagName === 'TEXTAREA' && isExpandable) {
                 bindExpandableElementResize(id, input);
-            }
-            if (input.tagName === 'TEXTAREA') {
-                bindTextareaHeightPersistence(input);
             }
         });
 

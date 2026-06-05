@@ -5,6 +5,7 @@ export function createImagePainterApi({
     state,
     dirHandles,
     autoSaveToDir,
+    applyEditedImage = async () => false,
     scheduleSave,
     showToast,
     documentRef = document,
@@ -14,20 +15,17 @@ export function createImagePainterApi({
     function openImagePainter(src, nodeId) {
         const overlay = documentRef.createElement('div');
         overlay.className = 'painter-overlay';
+        documentRef.body?.classList.add('preview-active');
         overlay.innerHTML = `
-        <div class="painter-header">
-            <h2>图片编辑器 - 绘制功能</h2>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <div class="painter-btn painter-btn-undo" id="painter-undo" title="撤回 (Ctrl+Z)" disabled>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
-                </div>
-                <div style="width: 1px; height: 24px; background: rgba(255,255,255,0.1); margin: 0 5px;"></div>
-                <div class="painter-btn painter-btn-save" id="painter-save" title="应用并保存 (S)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                </div>
-                <div class="painter-btn painter-btn-cancel" id="painter-cancel" title="取消并退出 (Esc)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </div>
+        <div class="painter-floating-actions">
+            <div class="painter-btn painter-btn-undo" id="painter-undo" title="撤回 (Ctrl+Z)" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+            </div>
+            <div class="painter-btn painter-btn-save" id="painter-save" title="应用并保存 (S)">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="painter-btn painter-btn-cancel" id="painter-cancel" title="取消并退出 (Esc)">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </div>
         </div>
         <div class="painter-body">
@@ -397,6 +395,7 @@ export function createImagePainterApi({
 
         function cleanup() {
             overlay.classList.remove('active');
+            documentRef.body?.classList.remove('preview-active');
             setTimeout(() => overlay.remove(), 300);
             windowRef.removeEventListener('mousemove', onMouseMove);
             windowRef.removeEventListener('mouseup', onMouseUp);
@@ -413,23 +412,40 @@ export function createImagePainterApi({
             const data = canvas.toDataURL('image/png');
             const node = state.nodes.get(nodeId);
             if (node) {
-                if (node.imageData !== undefined) {
+                const handledByExternalApply = await applyEditedImage({
+                    nodeId,
+                    dataUrl: data,
+                    node,
+                    source: src
+                });
+                if (handledByExternalApply) {
+                    showToast('图片已更新', 'success');
+                } else if (node.imageData !== undefined) {
                     node.imageData = data;
+                    node.imageDataList = [data];
+                    node.data = node.data || {};
+                    node.data.image = data;
+                    node.data.images = [data];
                     const dropZone = node.el.querySelector(`#${nodeId}-drop`);
                     if (dropZone) {
                         dropZone.innerHTML = `<img src="${data}" alt="已导入图片" draggable="false" style="pointer-events: none;" />`;
                     }
                 } else if (node.data && node.data.image !== undefined) {
                     node.data.image = data;
+                    node.data.images = [data];
+                    node.imageData = data;
+                    node.imageDataList = [data];
                     const nodeImage = node.el.querySelector('img');
                     if (nodeImage) nodeImage.src = data;
                 }
 
-                if (node.dirHandle || dirHandles.get(nodeId)) {
+                if (!handledByExternalApply && (node.dirHandle || dirHandles.get(nodeId))) {
                     await autoSaveToDir(nodeId, data);
                 }
                 scheduleSave();
-                showToast('图片已更新', 'success');
+                if (!handledByExternalApply) {
+                    showToast('图片已更新', 'success');
+                }
             }
             cleanup();
         }

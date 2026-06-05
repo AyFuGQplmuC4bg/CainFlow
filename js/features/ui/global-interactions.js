@@ -169,8 +169,8 @@ export function createGlobalInteractionsApi({
                 e.stopImmediatePropagation();
 
                 let targetNodeId = null;
-                if (state.selectedNodes.size === 1) {
-                    const selectedId = Array.from(state.selectedNodes)[0];
+                const selectedId = getSingleSelectedNodeId();
+                if (selectedId) {
                     const node = state.nodes.get(selectedId);
                     if (node && node.type === 'ImageImport') {
                         targetNodeId = selectedId;
@@ -210,6 +210,14 @@ export function createGlobalInteractionsApi({
                 }
             }
         });
+    }
+
+    function getSingleSelectedNodeId() {
+        if (state.selectedNodes.size === 1) {
+            const selectedId = Array.from(state.selectedNodes)[0];
+            if (state.nodes.has(selectedId)) return selectedId;
+        }
+        return null;
     }
 
     return {

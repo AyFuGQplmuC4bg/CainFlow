@@ -664,13 +664,6 @@ export function createMediaControllerApi({
         let response = null;
         let postErrorMessage = '';
 
-        addLog('info', '后端视频下载开始', `准备下载${videoUrlMeta.label}`, {
-            sourceVideoUrl: videoUrl,
-            videoUrlType: videoUrlMeta.kind,
-            videoUrlLabel: videoUrlMeta.label,
-            filenameBase
-        });
-
         try {
             response = await fetchRef('/api/media/download', {
                 method: 'POST',
@@ -1099,6 +1092,7 @@ export function createMediaControllerApi({
             container.focus({ preventScroll: true });
         });
         container.addEventListener('keydown', (event) => {
+            if (hasBlockingImmersiveOverlay()) return;
             if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
                 handleStep(-1, event);
             } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
@@ -1161,9 +1155,8 @@ export function createMediaControllerApi({
             if (isTypingIntoField()) return;
             if (hasBlockingImmersiveOverlay()) return;
             if (!(event.key === 'ArrowLeft' || event.key === 'ArrowRight')) return;
-            if (state.selectedNodes?.size !== 1) return;
-
-            const selectedNodeId = Array.from(state.selectedNodes)[0];
+            const selectedNodeId = getFocusedNodeId();
+            if (!selectedNodeId) return;
             const node = getNodeById(selectedNodeId);
             if (!node || (node.type !== 'ImagePreview' && node.type !== 'ImageGenerate' && node.type !== 'ImageSave')) return;
 
@@ -2337,10 +2330,6 @@ export function createMediaControllerApi({
             }
         );
 
-        previewContainer.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-        });
-
         previewContainer.addEventListener('pointerdown', (e) => {
             if (e.target.closest('.image-save-preview-nav')) {
                 e.stopPropagation();
@@ -2418,6 +2407,16 @@ export function createMediaControllerApi({
             e.stopPropagation();
             void openSaveImagePreview();
         });
+    }
+
+    function getFocusedNodeId() {
+        if (state.selectedNodes?.size === 1) {
+            const selectedNodeId = Array.from(state.selectedNodes)[0];
+            if (state.nodes?.has(selectedNodeId)) return selectedNodeId;
+        }
+        return state.activeNodeId && state.nodes?.has(state.activeNodeId)
+            ? state.activeNodeId
+            : null;
     }
 
     async function autoSaveToDir(nodeId, dataUrl) {
@@ -2563,10 +2562,6 @@ export function createMediaControllerApi({
                 scheduleSave();
             }
         );
-
-        previewContainer.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-        });
 
         previewContainer.addEventListener('pointerdown', (e) => {
             if (e.target.closest('.image-save-preview-nav')) {
@@ -3018,7 +3013,9 @@ export function createMediaControllerApi({
     async function openFullscreenPreview(src, nodeId = null) {
         displayImageMemoryManager.beginFullscreenPreview(nodeId);
         const overlay = documentRef.createElement('div');
-        overlay.className = `fullscreen-overlay${shouldIgnoreChromeOffsetForPreview() ? ' fullscreen-ignore-chrome' : ''}`;
+        overlay.className = 'fullscreen-overlay fullscreen-ignore-chrome';
+        overlay.tabIndex = -1;
+        documentRef.body?.classList.add('preview-active');
         const context = nodeId ? await getNodeFullscreenImageContext(nodeId, src) : {
             node: null,
             images: normalizeImageList(src),
@@ -3223,6 +3220,9 @@ export function createMediaControllerApi({
             flushNodePreviewState();
             cropper?.cleanup();
             overlay.remove();
+            if (!documentRef.querySelector('.fullscreen-overlay') && documentRef.getElementById('history-preview-modal')?.classList.contains('hidden') !== false) {
+                documentRef.body?.classList.remove('preview-active');
+            }
             windowRef.removeEventListener('mousemove', onMove);
             windowRef.removeEventListener('mouseup', onUp);
             documentRef.removeEventListener('keydown', onEsc);
@@ -3258,6 +3258,7 @@ export function createMediaControllerApi({
         };
         documentRef.addEventListener('keydown', onEsc);
         requestAnimationFrame(() => overlay.classList.add('active'));
+        overlay.focus({ preventScroll: true });
     }
 
     bindSelectedNodeKeyboardNavigation();

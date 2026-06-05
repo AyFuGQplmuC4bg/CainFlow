@@ -3,13 +3,35 @@
  */
 import { normalizeConcurrentRequestStatusPayload } from '../features/execution/concurrent-request-status-ui.js';
 import {
-    getCanonicalImage,
     getCanonicalImageList
 } from '../features/execution/execution-data-utils.js';
 
 const CANONICAL_IMAGE_NODE_TYPES = new Set(['ImageGenerate', 'ImageMerge', 'ImagePreview', 'ImageSave']);
 
 export function createNodeSerializer({ state, documentRef }) {
+    function getOrderedNodes() {
+        const nodesLayer = documentRef.getElementById('nodes-layer');
+        if (!nodesLayer) return Array.from(state.nodes.entries());
+
+        const orderedEntries = [];
+        const seenIds = new Set();
+
+        Array.from(nodesLayer.children).forEach((child) => {
+            const nodeId = child?.id;
+            if (!nodeId || !state.nodes.has(nodeId)) return;
+            orderedEntries.push([nodeId, state.nodes.get(nodeId)]);
+            seenIds.add(nodeId);
+        });
+
+        for (const entry of state.nodes.entries()) {
+            if (!seenIds.has(entry[0])) {
+                orderedEntries.push(entry);
+            }
+        }
+
+        return orderedEntries;
+    }
+
     function getNodeTextareaHeights(id) {
         const heights = {};
         documentRef.querySelectorAll(`#${id} textarea[id^="${id}-"]`).forEach((textarea) => {
@@ -22,9 +44,9 @@ export function createNodeSerializer({ state, documentRef }) {
         return Object.keys(heights).length > 0 ? heights : null;
     }
 
-    function serializeNodes(includeImages = false) {
+    function serializeNodes() {
         const nodes = [];
-        for (const [id, node] of state.nodes) {
+        for (const [id, node] of getOrderedNodes()) {
             const serialized = {
                 id,
                 type: node.type,
@@ -38,6 +60,9 @@ export function createNodeSerializer({ state, documentRef }) {
                 isFailed: node.isFailed === true || node.el?.classList?.contains('error') === true,
                 lastDuration: node.lastDuration || null
             };
+            if (node.collapsed === true && Number.isFinite(node.collapsedExpandedHeight) && node.collapsedExpandedHeight > 0) {
+                serialized.collapsedExpandedHeight = Math.round(node.collapsedExpandedHeight);
+            }
             if (node.isClone === true && typeof node.cloneSourceId === 'string' && node.cloneSourceId) {
                 serialized.isClone = true;
                 serialized.cloneSourceId = node.cloneSourceId;
@@ -50,7 +75,6 @@ export function createNodeSerializer({ state, documentRef }) {
 
             const usesCanonicalImages = CANONICAL_IMAGE_NODE_TYPES.has(node.type);
             const images = getCanonicalImageList(node, { includeResizePreview: false });
-            const imageData = getCanonicalImage(node, { includeResizePreview: false });
             const imageCount = Math.max(
                 images.length,
                 Math.max(0, parseInt(node.data?.imageCount || '0', 10) || 0)
@@ -62,27 +86,18 @@ export function createNodeSerializer({ state, documentRef }) {
                 ? node.imageImportAssetKey
                 : (typeof node.data?.imageImportAssetKey === 'string' ? node.data.imageImportAssetKey : '');
             const hasRecoverableImageAsset = Boolean(imageAssetKey || imageImportAssetKey);
-            const shouldInlineResultImage = includeImages || !hasRecoverableImageAsset || node.data?.imageAssetReady !== true;
             if (usesCanonicalImages) {
-                if (shouldInlineResultImage && images.length > 0) {
-                    serialized.imageList = images.slice();
-                }
                 if (imageAssetKey) serialized.imageAssetKey = imageAssetKey;
                 if (imageCount > 0) serialized.imageCount = imageCount;
                 if (imageCount > 1) {
                     serialized.imagePreviewIndex = Math.max(0, parseInt(node.imagePreviewIndex || '0', 10) || 0);
                 }
-            } else if (shouldInlineResultImage && imageData) {
-                serialized.imageData = imageData;
             }
             if (hasRecoverableImageAsset) {
                 if (!usesCanonicalImages && imageAssetKey) serialized.imageAssetKey = imageAssetKey;
                 if (imageCount > 0 && !usesCanonicalImages) serialized.imageCount = imageCount;
                 if (imageCount > 1 && !usesCanonicalImages) {
                     serialized.imagePreviewIndex = Math.max(0, parseInt(node.imagePreviewIndex || '0', 10) || 0);
-                }
-                if (typeof node.data?.imagePreviewThumbnail === 'string' && node.data.imagePreviewThumbnail.trim()) {
-                    serialized.imagePreviewThumbnail = node.data.imagePreviewThumbnail.trim();
                 }
                 if (node.data?.imageAssetReady === true) serialized.imageAssetReady = true;
                 if (node.data?.imageHydratedAt) serialized.imageHydratedAt = node.data.imageHydratedAt;
@@ -91,26 +106,11 @@ export function createNodeSerializer({ state, documentRef }) {
                 serialized.imageMemoryReleased = true;
                 if (imageAssetKey) serialized.imageAssetKey = imageAssetKey;
             }
-            if (node.type === 'ImageCompare') {
-                const compareImageA = typeof node.compareImageA === 'string' && node.compareImageA.trim()
-                    ? node.compareImageA
-                    : (typeof node.data?.compareImageA === 'string' ? node.data.compareImageA : '');
-                const compareImageB = typeof node.compareImageB === 'string' && node.compareImageB.trim()
-                    ? node.compareImageB
-                    : (typeof node.data?.compareImageB === 'string' ? node.data.compareImageB : '');
-                if (compareImageA && shouldInlineResultImage) serialized.compareImageA = compareImageA;
-                if (compareImageB && shouldInlineResultImage) serialized.compareImageB = compareImageB;
-                if (compareImageB && shouldInlineResultImage && !serialized.imageData) serialized.imageData = compareImageB;
-            }
-
             if (node.type === 'ImageImport') {
                 serialized.importMode = documentRef.getElementById(`${id}-import-mode`)?.value || node.importMode || 'upload';
                 serialized.imageUrl = documentRef.getElementById(`${id}-url-input`)?.value || node.imageUrl || '';
                 if (serialized.importMode !== 'url') {
                     serialized.imageImportAssetKey = imageImportAssetKey;
-                    if (typeof node.data?.imagePreviewThumbnail === 'string' && node.data.imagePreviewThumbnail.trim()) {
-                        serialized.imagePreviewThumbnail = node.data.imagePreviewThumbnail.trim();
-                    }
                 }
             }
 
@@ -216,12 +216,12 @@ export function createNodeSerializer({ state, documentRef }) {
                 serialized.text = node.data?.text || '';
                 serialized.delimiter = documentRef.getElementById(`${id}-delimiter`)?.value || '';
                 const mergeOutputEnabled = documentRef.getElementById(`${id}-merge-output-enabled`)?.checked === true;
-                const parsedOutputCount = parseInt(documentRef.getElementById(`${id}-output-count`)?.value ?? node.data?.outputCount ?? '1', 10);
+                const parsedOutputCount = parseInt(documentRef.getElementById(`${id}-output-count`)?.value ?? node.data?.outputCount ?? '0', 10);
                 serialized.outputCount = mergeOutputEnabled
                     ? 0
-                    : (Number.isFinite(parsedOutputCount) ? Math.max(0, parsedOutputCount) : 1);
+                    : (Number.isFinite(parsedOutputCount) ? Math.max(0, parsedOutputCount) : 0);
                 serialized.removeEmptyLines = documentRef.getElementById(`${id}-remove-empty-lines`)?.checked === true;
-                serialized.previewEnabled = documentRef.getElementById(`${id}-preview-enabled`)?.checked === true;
+                serialized.previewEnabled = documentRef.getElementById(`${id}-preview-enabled`)?.checked !== false;
                 serialized.mergeOutputEnabled = mergeOutputEnabled;
                 serialized.parts = Array.isArray(node.data?.parts) ? node.data.parts.slice() : [];
             }
@@ -266,10 +266,10 @@ export function createNodeSerializer({ state, documentRef }) {
         return nodes;
     }
 
-    function buildStatePayload(includeImages = false) {
+    function buildStatePayload() {
         return {
             canvas: { x: state.canvas.x, y: state.canvas.y, zoom: state.canvas.zoom },
-            nodes: serializeNodes(includeImages),
+            nodes: serializeNodes(),
             connections: state.connections.map((connection) => ({
                 id: connection.id,
                 from: connection.from,

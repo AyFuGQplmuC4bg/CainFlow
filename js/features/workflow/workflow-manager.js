@@ -158,7 +158,7 @@ export function createWorkflowManagerApi({
     }
 
     async function saveWorkflowToFile(name, data) {
-        const result = await saveWorkflowToFileService(name, data);
+        const result = await saveWorkflowToFileService(name, stripInlineImagesFromWorkflowData(data));
         if (result !== true) {
             showToast(result.message, 'error');
             return false;
@@ -394,7 +394,7 @@ export function createWorkflowManagerApi({
     }
 
     function downloadWorkflowJson(name, data) {
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(stripInlineImagesFromWorkflowData(data), null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const link = documentRef.createElement('a');
         link.href = url;
@@ -1088,9 +1088,65 @@ export function createWorkflowManagerApi({
         list.innerHTML = `<div class="workflow-empty">${escapeHtml(text)}</div>`;
     }
 
+    function getCenteredCanvasState() {
+        const canvasContainer = documentRef.getElementById('canvas-container');
+        return {
+            x: (canvasContainer?.clientWidth || windowRef.innerWidth || 0) / 2,
+            y: (canvasContainer?.clientHeight || windowRef.innerHeight || 0) / 2,
+            zoom: 1
+        };
+    }
+
+    function isInlineImageData(value) {
+        return typeof value === 'string' && /^data:image\//i.test(value.trim());
+    }
+
+    function stripInlineImagesFromNode(node) {
+        if (!node || typeof node !== 'object') return node;
+        const sanitized = { ...node };
+        const data = sanitized.data && typeof sanitized.data === 'object'
+            ? { ...sanitized.data }
+            : null;
+
+        delete sanitized.imageData;
+        delete sanitized.imageDataList;
+        delete sanitized.imageList;
+        delete sanitized.images;
+        delete sanitized.imagePreviewThumbnail;
+
+        if (isInlineImageData(sanitized.compareImageA)) delete sanitized.compareImageA;
+        if (isInlineImageData(sanitized.compareImageB)) delete sanitized.compareImageB;
+
+        if (data) {
+            if (isInlineImageData(data.image)) delete data.image;
+            delete data.images;
+            delete data.imageData;
+            delete data.imageDataList;
+            delete data.imageList;
+            delete data.imagePreviewThumbnail;
+            if (isInlineImageData(data.compareImageA)) delete data.compareImageA;
+            if (isInlineImageData(data.compareImageB)) delete data.compareImageB;
+            sanitized.data = data;
+        }
+
+        return sanitized;
+    }
+
+    function stripInlineImagesFromWorkflowData(workflowData) {
+        if (!workflowData || typeof workflowData !== 'object') return workflowData;
+        const sanitized = { ...workflowData };
+        if (Array.isArray(workflowData.nodes)) {
+            sanitized.nodes = workflowData.nodes.map(stripInlineImagesFromNode);
+        }
+        if (Array.isArray(workflowData.connections)) {
+            sanitized.connections = workflowData.connections.map((connection) => ({ ...connection }));
+        }
+        return sanitized;
+    }
+
     function getEmptyWorkflowData() {
         return {
-            canvas: { x: 0, y: 0, zoom: 1 },
+            canvas: getCenteredCanvasState(),
             nodes: [],
             connections: [],
             version: WORKFLOW_VERSION
@@ -1108,10 +1164,10 @@ export function createWorkflowManagerApi({
     }
 
     function centerEmptyWorkflowCanvas() {
-        const canvasContainer = documentRef.getElementById('canvas-container');
-        state.canvas.x = (canvasContainer?.clientWidth || windowRef.innerWidth || 0) / 2;
-        state.canvas.y = (canvasContainer?.clientHeight || windowRef.innerHeight || 0) / 2;
-        state.canvas.zoom = 1;
+        const centered = getCenteredCanvasState();
+        state.canvas.x = centered.x;
+        state.canvas.y = centered.y;
+        state.canvas.zoom = centered.zoom;
         viewportApi.updateCanvasTransform();
     }
 
@@ -1909,7 +1965,7 @@ export function createWorkflowManagerApi({
                 });
                 const data = await getWorkflowDataForAction(name);
                 if (!data) return false;
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const blob = new Blob([JSON.stringify(stripInlineImagesFromWorkflowData(data), null, 2)], { type: 'application/json' });
                 const writable = await handle.createWritable();
                 await writable.write(blob);
                 await writable.close();
@@ -2034,7 +2090,7 @@ export function createWorkflowManagerApi({
     async function createNewWorkflow() {
         const names = await fetchWorkflows();
         const name = findNextUnsavedName(names);
-        const shouldInheritCanvas = !getActiveWorkflowTab();
+        const shouldInheritCanvas = false;
         const data = getNewWorkflowData({ inheritCurrentCanvas: shouldInheritCanvas });
         if (!(await saveWorkflowToFile(name, data))) return false;
         snapshotActiveWorkflow();

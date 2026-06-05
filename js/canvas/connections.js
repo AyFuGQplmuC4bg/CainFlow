@@ -165,8 +165,7 @@ export function createConnectionsApi({
     }
 
     function updateFlowDecoration(path, connId, isActive) {
-        const canShowFlowDecoration = (state.connectionLineType || 'bezier') !== 'orthogonal';
-        const shouldShow = canShowFlowDecoration && isGlobalAnimationEnabled() && isActive && !!path.getAttribute('d');
+        const shouldShow = isGlobalAnimationEnabled() && isActive && !!path.getAttribute('d');
         if (!shouldShow) {
             removeFlowDecoration(connId);
             return;
@@ -707,7 +706,16 @@ export function createConnectionsApi({
             const from = getPortPosition(conn.from.nodeId, conn.from.port, 'output', containerRect);
             const to = getPortPosition(conn.to.nodeId, conn.to.port, 'input', containerRect);
             const pathStr = createBezierPath(from.x, from.y, to.x, to.y, getConnectionPathOptions(conn, laneById));
-            const isSelected = state.selectedNodes.has(conn.from.nodeId) || state.selectedNodes.has(conn.to.nodeId);
+            const relationCache = state.activeNodeRelationCache || {};
+            const activeNodeId = relationCache.anchorNodeId || state.activeNodeId || null;
+            const incomingConnectionIds = new Set(relationCache.incomingConnectionIds || []);
+            const outgoingConnectionIds = new Set(relationCache.outgoingConnectionIds || []);
+            const isSelected = state.selectedNodes.has(conn.from.nodeId) ||
+                state.selectedNodes.has(conn.to.nodeId) ||
+                conn.from.nodeId === activeNodeId ||
+                conn.to.nodeId === activeNodeId ||
+                incomingConnectionIds.has(conn.id) ||
+                outgoingConnectionIds.has(conn.id);
             const shouldAnimateFlow = hasRunningEndpoint(conn);
 
             if (!path) {
@@ -874,6 +882,10 @@ export function createConnectionsApi({
 
     function updatePortStyles() {
         documentRef.querySelectorAll('.port-dot').forEach((dot) => dot.classList.remove('connected'));
+        documentRef.querySelectorAll('.node-port').forEach((portEl) => {
+            portEl.classList.remove('is-hidden-by-collapse');
+            portEl.setAttribute('aria-hidden', 'false');
+        });
         for (const conn of state.connections) {
             const fromNode = getNodeById(conn.from.nodeId);
             const toNode = getNodeById(conn.to.nodeId);
@@ -886,6 +898,16 @@ export function createConnectionsApi({
                 if (toDot) toDot.classList.add('connected');
             }
         }
+        state.nodes.forEach((node) => {
+            if (!node?.el || !(node.collapsed === true || node.el.classList.contains('collapsed'))) return;
+            node.el.querySelectorAll('.node-port').forEach((portEl) => {
+                const dot = portEl.querySelector('.port-dot');
+                const isConnected = dot?.classList.contains('connected') === true;
+                if (isConnected) return;
+                portEl.classList.add('is-hidden-by-collapse');
+                portEl.setAttribute('aria-hidden', 'true');
+            });
+        });
     }
 
     return {
