@@ -38,6 +38,10 @@ export function createNodeLifecycleApi({
     scheduleSave,
     showToast,
     updateAllConnections,
+    updateDirtyConnections = null,
+    scheduleConnectionRefresh = null,
+    invalidateNodePortCache = null,
+    markNodeConnectionsDirty = null,
     updatePortStyles,
     onConnectionsChanged = () => {},
     getCacheSidebarActive,
@@ -47,6 +51,7 @@ export function createNodeLifecycleApi({
 }) {
     const view = documentRef.defaultView || window;
     let pendingNodeSizeConnectionRefresh = null;
+    const pendingNodeSizeConnectionRefreshIds = new Set();
     const NODE_RESIZABLE_MEDIA_SELECTOR = '.file-drop-zone, .preview-container, .save-preview-container, .image-compare-container, .camera-control-node-preview';
     const NODE_SCROLL_CONTENT_SELECTOR = '.chat-response-area, .text-display-box, .node-error-msg';
     const NODE_SCROLLABLE_RESULT_SELECTOR = `${NODE_SCROLL_CONTENT_SELECTOR}, .text-split-preview`;
@@ -54,6 +59,7 @@ export function createNodeLifecycleApi({
     const FALLBACK_DEFAULT_NODE_WIDTH = 180;
     const FALLBACK_DEFAULT_NODE_HEIGHT = 120;
     const IMAGE_RESTORE_VIEWPORT_PREFETCH_PADDING = 360;
+    const IMAGE_IMPORT_ASSET_KEY_PREFIX = 'image-import:';
     const pendingImageRestoreTasks = [];
     let imageRestoreQueueRunning = false;
     let activeImageRestoreNodeId = '';
@@ -138,6 +144,38 @@ export function createNodeLifecycleApi({
         };
     }
 
+    function getExpectedImageImportAssetKey(nodeId) {
+        return `${IMAGE_IMPORT_ASSET_KEY_PREFIX}${String(nodeId || '').trim()}`;
+    }
+
+    function getNodeImageImportAssetKey(node) {
+        if (typeof node?.imageImportAssetKey === 'string' && node.imageImportAssetKey) {
+            return node.imageImportAssetKey;
+        }
+        if (typeof node?.data?.imageImportAssetKey === 'string' && node.data.imageImportAssetKey) {
+            return node.data.imageImportAssetKey;
+        }
+        return '';
+    }
+
+    function isImageImportAssetKeyReferenced(assetKey, excludedNodeIds = new Set()) {
+        const key = String(assetKey || '').trim();
+        if (!key) return false;
+
+        for (const node of state.nodes.values()) {
+            if (!node?.id || excludedNodeIds.has(node.id)) continue;
+            if (getNodeImageImportAssetKey(node) === key) return true;
+        }
+
+        return (state.workflowTabs || []).some((tab) => {
+            const workflowNodes = Array.isArray(tab?.data?.nodes) ? tab.data.nodes : [];
+            return workflowNodes.some((node) => {
+                if (!node?.id || excludedNodeIds.has(node.id)) return false;
+                return getNodeImageImportAssetKey(node) === key;
+            });
+        });
+    }
+
     function imageRestoreBoundsIntersect(bounds, viewport, padding = 0) {
         if (!bounds || !viewport) return false;
         return !(
@@ -181,13 +219,61 @@ export function createNodeLifecycleApi({
         });
     }
 
-    function scheduleNodeSizeConnectionRefresh() {
+    function scheduleNodeSizeConnectionRefresh(nodeId = null) {
+        if (nodeId) pendingNodeSizeConnectionRefreshIds.add(nodeId);
         if (pendingNodeSizeConnectionRefresh !== null) return;
         const requestFrame = view.requestAnimationFrame || ((callback) => view.setTimeout(callback, 16));
         pendingNodeSizeConnectionRefresh = requestFrame(() => {
             pendingNodeSizeConnectionRefresh = null;
-            updateAllConnections();
+            const nodeIds = Array.from(pendingNodeSizeConnectionRefreshIds);
+            pendingNodeSizeConnectionRefreshIds.clear();
+            if (typeof scheduleConnectionRefresh === 'function') {
+                scheduleConnectionRefresh({
+                    nodeIds,
+                    force: nodeIds.length === 0,
+                    reason: 'node-size-observer'
+                });
+                return;
+            }
+            nodeIds.forEach((id) => {
+                if (typeof invalidateNodePortCache === 'function') {
+                    invalidateNodePortCache(id);
+                } else if (typeof markNodeConnectionsDirty === 'function') {
+                    markNodeConnectionsDirty(id);
+                }
+            });
+            if (nodeIds.length === 0) {
+                updateAllConnections();
+                return;
+            }
+            if (typeof updateDirtyConnections === 'function') {
+                updateDirtyConnections();
+            } else {
+                updateAllConnections();
+            }
         });
+    }
+
+    function refreshNodeConnectionGeometry(nodeId, { force = false } = {}) {
+        if (typeof scheduleConnectionRefresh === 'function') {
+            scheduleConnectionRefresh({
+                nodeIds: nodeId,
+                force,
+                immediate: force,
+                reason: 'node-connection-geometry'
+            });
+            return;
+        }
+        if (typeof invalidateNodePortCache === 'function') {
+            invalidateNodePortCache(nodeId);
+        } else if (typeof markNodeConnectionsDirty === 'function') {
+            markNodeConnectionsDirty(nodeId);
+        }
+        if (!force && typeof updateDirtyConnections === 'function') {
+            updateDirtyConnections();
+            return;
+        }
+        updateAllConnections();
     }
 
     function readObservedNodeSize(entry, el) {
@@ -222,7 +308,7 @@ export function createNodeLifecycleApi({
             nodeData.observedHeight = height;
             if (width > 0) nodeData.width = width;
             if (height > 0) nodeData.height = height;
-            scheduleNodeSizeConnectionRefresh();
+            scheduleNodeSizeConnectionRefresh(nodeData.id);
         });
 
         try {
@@ -578,12 +664,13 @@ export function createNodeLifecycleApi({
         if (el.matches?.(NODE_SCROLLABLE_RESULT_SELECTOR)) {
             const explicitHeightValue = String(el.style?.height || '');
             const explicitHeight = /px$/i.test(explicitHeightValue) ? parseFloat(explicitHeightValue) : NaN;
-            const contentHeight = el.classList.contains('chat-response-area')
-                ? minHeight
-                : (Number.isFinite(explicitHeight) && explicitHeight > 0 ? explicitHeight : minHeight);
+            const computedHeight = parseFloat(style.height || '0');
+            const fixedHeight = Number.isFinite(explicitHeight) && explicitHeight > 0
+                ? explicitHeight
+                : (Number.isFinite(computedHeight) && computedHeight > 0 ? computedHeight : minHeight);
             return {
                 width: Math.ceil(minWidth + getBoxExtras(style, 'x') + marginX),
-                height: Math.ceil(Math.max(minHeight, contentHeight) + marginY)
+                height: Math.ceil(Math.max(minHeight, fixedHeight) + marginY)
             };
         }
 
@@ -736,6 +823,9 @@ export function createNodeLifecycleApi({
         const originalBodyOverflowX = body?.style.overflowX || '';
         const originalBodyMaxHeight = body?.style.maxHeight || '';
         const originalBodyDisplay = body?.style.display || '';
+        const isTextChatNode = el.classList.contains('node-chat');
+        const responseArea = isTextChatNode ? body?.querySelector('.chat-response-area') : null;
+        const originalResponseHeight = responseArea?.style.height || '';
 
         el.style.height = 'auto';
         if (body && !isCollapsed) {
@@ -744,6 +834,10 @@ export function createNodeLifecycleApi({
             body.style.overflowY = 'visible';
             body.style.overflowX = 'visible';
             body.style.maxHeight = 'none';
+        }
+        if (responseArea) {
+            const currentHeight = responseArea.offsetHeight || parseFloat(responseArea.style.height || '0') || 120;
+            responseArea.style.height = `${Math.round(currentHeight)}px`;
         }
 
         const headerWidth = getHeaderMinimumWidth(header, getDefaultNodeWidth(config));
@@ -767,6 +861,9 @@ export function createNodeLifecycleApi({
             body.style.overflowX = originalBodyOverflowX;
             body.style.maxHeight = originalBodyMaxHeight;
             body.style.display = originalBodyDisplay;
+        }
+        if (responseArea) {
+            responseArea.style.height = originalResponseHeight;
         }
 
         const contentMinHeight = Math.ceil(
@@ -857,7 +954,7 @@ export function createNodeLifecycleApi({
             node.observedHeight = nextHeight;
         }
 
-        if (options.updateConnections !== false) updateAllConnections();
+        if (options.updateConnections !== false) refreshNodeConnectionGeometry(node.id, { force: options.forceConnectionRefresh === true });
         if (options.save !== false) scheduleSave();
         return true;
     }
@@ -1148,9 +1245,17 @@ export function createNodeLifecycleApi({
         const restoredAssetKey = typeof effectiveRestoreData?.imageAssetKey === 'string' && effectiveRestoreData.imageAssetKey
             ? effectiveRestoreData.imageAssetKey
             : '';
-        if (restoredImages.length === 0 && effectiveRestoreData?.imageMemoryReleased === true && typeof effectiveRestoreData?.imageAssetKey === 'string' && effectiveRestoreData.imageAssetKey) {
+        const releasedImageAssetKey = typeof effectiveRestoreData?.imageAssetKey === 'string' && effectiveRestoreData.imageAssetKey
+            ? effectiveRestoreData.imageAssetKey
+            : (typeof effectiveRestoreData?.imageImportAssetKey === 'string' ? effectiveRestoreData.imageImportAssetKey : '');
+        if (restoredImages.length === 0 && effectiveRestoreData?.imageMemoryReleased === true && releasedImageAssetKey) {
             nodeData.data.imageMemoryReleased = true;
-            nodeData.data.imageAssetKey = effectiveRestoreData.imageAssetKey;
+            if (normalizedType === 'ImageImport') {
+                nodeData.imageImportAssetKey = releasedImageAssetKey;
+                nodeData.data.imageImportAssetKey = releasedImageAssetKey;
+            } else {
+                nodeData.data.imageAssetKey = releasedImageAssetKey;
+            }
         }
         if (isRecoverableImageAssetNodeType(normalizedType)) {
             const restoredImageCount = Math.max(
@@ -1461,10 +1566,16 @@ export function createNodeLifecycleApi({
                     }
 
                     if (normalizedType === 'ImageImport' && !isRemoteImageUrl(data)) {
-                        const savedImportKey = await saveImageImportAsset(id, data, nodeData.imageImportAssetKey);
+                        const preferredImportKey = nodeData.imageImportAssetKey === getExpectedImageImportAssetKey(id)
+                            ? nodeData.imageImportAssetKey
+                            : '';
+                        const savedImportKey = await saveImageImportAsset(id, data, preferredImportKey);
                         if (savedImportKey) {
+                            const keyChanged = savedImportKey !== nodeData.imageImportAssetKey
+                                || savedImportKey !== nodeData.data.imageImportAssetKey;
                             nodeData.imageImportAssetKey = savedImportKey;
                             nodeData.data.imageImportAssetKey = savedImportKey;
+                            if (keyChanged) scheduleSave();
                         } else if (hasInitialData) {
                             await saveImageAsset(id, data);
                         }
@@ -1695,6 +1806,7 @@ export function createNodeLifecycleApi({
             ? buildPreservedConnections(idsToRemove)
             : [];
         let removedConnections = false;
+        const removingIds = new Set(idsToRemove);
         idsToRemove.forEach((nid) => {
             const node = state.nodes.get(nid);
             if (!node) return;
@@ -1707,7 +1819,11 @@ export function createNodeLifecycleApi({
             state.nodes.delete(nid);
             state.selectedNodes.delete(nid);
             if (node.type === 'ImageImport') {
-                void deleteImageImportAsset(node.imageImportAssetKey || node.data?.imageImportAssetKey || nid);
+                const importAssetKey = getNodeImageImportAssetKey(node);
+                const ownedAssetKey = importAssetKey || getExpectedImageImportAssetKey(nid);
+                if (!isImageImportAssetKeyReferenced(ownedAssetKey, removingIds)) {
+                    void deleteImageImportAsset(ownedAssetKey);
+                }
             }
         });
         const preservedConnectionCount = appendPreservedConnections(preservedConnectionCandidates);

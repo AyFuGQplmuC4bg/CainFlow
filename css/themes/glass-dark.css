@@ -50,6 +50,7 @@
     --port-image: #b5a7ee;
     --port-text: #7dd3fc;
     --port-params: #f0c36a;
+    --port-any: #6ee7b7;
     --shadow-node: none;
     --shadow-node-hover: none;
     --bg-modal: var(--glass-surface);
@@ -424,8 +425,8 @@ html[data-app-theme="glass-dark"] .node.selected .node-glass-bg {
 }
 
 html[data-app-theme="glass-dark"] #canvas-container.is-zooming .node-glass-bg {
-    backdrop-filter: blur(var(--glass-node-blur-radius)) !important;
-    -webkit-backdrop-filter: blur(var(--glass-node-blur-radius)) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 html[data-app-theme="glass-dark"] .node.running .node-glass-bg {

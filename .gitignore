@@ -2,11 +2,12 @@
 __pycache__/
 *.py[cod]
 
+
 # Runtime logs
 log/
 
 # Local workflow data
-workflows/
+/workflows/
 
 # Local release builds
 build/

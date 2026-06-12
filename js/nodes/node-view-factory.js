@@ -16,6 +16,7 @@ import {
 } from '../features/execution/provider-request-utils.js';
 import { splitTextForTextSplitNode } from '../core/common-utils.js';
 import { applyReferenceImagePorts } from './reference-image-ports.js';
+import { getCustomParamsInputPorts } from './types/custom-params.js';
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -251,6 +252,11 @@ function renderImageResolutionOptions(model, providers, selectedResolution) {
 }
 
 function getTextareaHeightStyle(restoreData = {}, key) {
+    const height = Number(restoreData?.textareaHeights?.[key]);
+    return Number.isFinite(height) && height > 0 ? ` style="height:${Math.round(height)}px"` : '';
+}
+
+function getResponseAreaHeightStyle(restoreData = {}, key) {
     const height = Number(restoreData?.textareaHeights?.[key]);
     return Number.isFinite(height) && height > 0 ? ` style="height:${Math.round(height)}px"` : '';
 }
@@ -524,6 +530,7 @@ function renderImageGenerateBody(id, restoreData, models, providers) {
         </div>
         ${renderNodeFormField({
             label: '生成进度',
+            fieldClass: 'node-generation-progress-field',
             content: `<div class="image-generation-progress api-generation-progress" id="${id}-generation-progress" aria-live="polite">0/${generationCount}</div>`
         })}
         <div class="node-field ${isNewApiAsyncImage ? '' : 'hidden'}" id="${id}-resume-image-id-field">
@@ -536,7 +543,7 @@ function renderImageGenerateBody(id, restoreData, models, providers) {
                 恢复进度
             </button>
         </div>
-        <div class="node-error-msg" id="${id}-error"></div>
+        <div class="node-error-msg hidden" id="${id}-error"></div>
     `;
 }
 
@@ -733,7 +740,7 @@ function renderVideoGenerateBody(id, restoreData, models, providers) {
                 恢复进度
             </button>
         </div>
-        <div class="node-error-msg" id="${id}-error"></div>
+        <div class="node-error-msg hidden" id="${id}-error"></div>
     `;
 }
 
@@ -765,7 +772,7 @@ function renderCameraControlBody(id, restoreData) {
         : `<div class="camera-control-node-preview-placeholder">${escapeHtml(placeholder)}</div>`}
             </div>
             <div class="camera-control-note" role="note">
-                说明：本节点会生成一段有关视角的提示词，并不是真正传递相机参数，因此控制效果不精确，请不要过度依赖此节点。
+                说明：本节点会输出结构化的英文视角提示词，用来更明确地约束机位、构图、镜头感和翻滚角；它仍然是提示词控制，不是底层相机参数直传。
             </div>
         </div>
     `;
@@ -784,23 +791,23 @@ function renderTextChatBody(id, restoreData, models, providers) {
     return `
         <div class="node-field"><label>API 配置</label><select id="${id}-apiconfig">${opts}</select></div>
         <div class="node-field" id="${id}-provider-field"><label>供应商</label><select id="${id}-provider">${providerOptions || '<option value="">-- 暂无可用供应商 --</option>'}</select></div>
-        <div class="node-field"><label>系统提示语（可选）</label>
+        <div class="node-field node-chat-system-field"><label>系统提示语（可选）</label>
             <textarea id="${id}-sysprompt" placeholder="设定 AI 的角色或背景..." rows="2"${getTextareaHeightStyle(rd, 'sysprompt')}>${rd.sysprompt || ''}</textarea></div>
         <div class="node-field node-field-row"><label>启用搜索</label>
             <label class="toggle-switch"><input type="checkbox" id="${id}-search" ${rd.search ? 'checked' : ''} /><span class="toggle-slider"></span></label></div>
         <div class="node-field node-field-row"><label>固定结果</label>
             <label class="toggle-switch"><input type="checkbox" id="${id}-fixed" ${rd.fixed ? 'checked' : ''} /><span class="toggle-slider"></span></label></div>
-        <div class="node-field"><label>提问内容</label>
+        <div class="node-field node-chat-prompt-field"><label>提问内容</label>
             <textarea id="${id}-prompt" placeholder="输入你的问题..." rows="3"${getTextareaHeightStyle(rd, 'prompt')}>${rd.prompt || ''}</textarea></div>
         <div class="node-field node-field-expand"><label>对话回复</label>
             <div class="chat-response-wrapper" id="${id}-wrapper">
                 <button class="chat-copy-btn" id="${id}-copy-btn" title="复制回复内容">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 </button>
-                <div class="chat-response-area" id="${id}-response">${rd.lastResponse ? rd.lastResponse : '<div class="chat-response-placeholder">运行后显示对话结果</div>'}</div>
+                <div class="chat-response-area" id="${id}-response"${getResponseAreaHeightStyle(rd, 'response')}>${rd.lastResponse ? rd.lastResponse : '<div class="chat-response-placeholder">运行后显示对话结果</div>'}</div>
             </div>
         </div>
-        <div class="node-field">
+        <div class="node-field node-generation-progress-field">
             <label>生成进度</label>
             <div class="image-generation-progress api-generation-progress" id="${id}-generation-progress" aria-live="polite">0/1</div>
         </div>
@@ -1223,13 +1230,20 @@ export function createNodeMarkup({ type, id, config, restoreData, state }) {
         effectiveConfig = { ...config, inputs: getImageMergeInputPorts(restoreData) };
     } else if (type === 'ImageGenerate' || type === 'VideoGenerate' || type === 'TextChat') {
         effectiveConfig = applyReferenceImagePorts(config, restoreData);
+    } else if (type === 'CustomParams') {
+        effectiveConfig = { ...config, inputs: getCustomParamsInputPorts(restoreData) };
     }
     const isCollapsed = restoreData?.collapsed === true;
     const isClone = restoreData?.isClone === true && typeof restoreData?.cloneSourceId === 'string' && restoreData.cloneSourceId;
     const customTitle = typeof restoreData?.customTitle === 'string' && restoreData.customTitle.trim()
         ? restoreData.customTitle.trim()
         : '';
-    const bodyClassName = isCollapsed ? 'node-body is-collapsed' : 'node-body';
+    const bodyClasses = ['node-body'];
+    if (isCollapsed) bodyClasses.push('is-collapsed');
+    if (type === 'ImageGenerate' || type === 'TextChat') {
+        bodyClasses.push('node-body-has-generation-progress');
+    }
+    const bodyClassName = bodyClasses.join(' ');
     return [
         renderNodeHeader(id, effectiveConfig, { collapsed: isCollapsed, customTitle, isClone }),
         renderPortSections(id, effectiveConfig),

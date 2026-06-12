@@ -2,6 +2,7 @@
  * 负责本地会话状态保存、撤销栈维护与自动保存调度。
  */
 import { cleanupElementResources } from '../../core/common-utils.js';
+import { migrateLegacyWorkflowData } from './legacy-node-migration.js';
 
 export function createSessionManagerApi({
     state,
@@ -293,10 +294,10 @@ export function createSessionManagerApi({
     }
 
     function pushHistory() {
-        const snapshot = {
+        const snapshot = sanitizeWorkflowDataForSessionCache({
             nodes: nodeSerializer.serializeNodes(),
             connections: state.connections.map((connection) => ({ ...connection }))
-        };
+        });
         state.undoStack.push(JSON.stringify(snapshot));
         if (state.undoStack.length > 5) {
             state.undoStack.shift();
@@ -313,7 +314,7 @@ export function createSessionManagerApi({
         }
 
         const raw = state.undoStack.pop();
-        const snapshot = JSON.parse(raw);
+        const snapshot = migrateLegacyWorkflowData(JSON.parse(raw));
 
         beginMediaRestoreBatch();
         try {

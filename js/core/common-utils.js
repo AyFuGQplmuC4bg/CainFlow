@@ -2,7 +2,13 @@
  * 提供跨模块复用的基础工具函数，例如 ID 生成与防抖包装。
  */
 export function generateId() {
-    return 'n_' + Math.random().toString(36).substr(2, 9);
+    const bytes = new Uint8Array(7);
+    crypto.getRandomValues(bytes);
+    let id = 'n_';
+    for (let i = 0; i < bytes.length; i++) {
+        id += bytes[i].toString(36).padStart(2, '0').slice(-2);
+    }
+    return id.slice(0, 11);
 }
 
 export function debounce(fn, ms, setTimeoutRef = setTimeout, clearTimeoutRef = clearTimeout) {
@@ -48,7 +54,7 @@ export function splitTextForTextSplitNode(text, delimiter, options = {}) {
         .filter((part) => part.trim().length > 0);
 }
 
-export function releaseElementImageSources(root) {
+function releaseElementImageSources(root) {
     if (!root?.querySelectorAll) return;
     const images = root.matches?.('img')
         ? [root, ...Array.from(root.querySelectorAll('img'))]

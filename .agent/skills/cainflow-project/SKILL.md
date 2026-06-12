@@ -32,15 +32,15 @@ description: CainFlow 项目导航 Skill。用于修改功能、重构或排查�
 - 后端业务逻辑：`backend/services/*`
 - 后端启动与运行配置：`backend/main.py`、`backend/config.py`、`server.py`
 - 发布打包、本地构建与清理维护：`.github/workflows/release.yml`、`.github/workflows/cleanup-releases.yml`、`.github/workflows/cleanup-workflow-runs.yml`、`scripts/build-release-local.ps1`
-- 样式入口与分层样式：`index.css`、`css/*`
+- 样式加载：`index.html` 中的 `<link>` 标签并行加载所有 CSS 模块，按 foundation → modules → layout → components → features → themes 顺序组织
 
 ## 开发规则
 
-1. 优先扩展已有模块，不要继续增肥 `index.js`、`index.html` 或 `css/legacy.css`。
+1. 优先扩展已有模块，不要继续增肥 `index.js` 或 `css/legacy.css`。`index.html` 中的 CSS `<link>` 标签保持并行加载顺序，新增样式模块需同步添加对应 `<link>` 引用。
 2. 功能专属逻辑放 `js/features/<feature>/`；共享能力放 `js/core/`、`js/services/`、`js/canvas/`。
 3. 节点类型定义放 `js/nodes/types/*.js`；模板放 `js/nodes/node-view-factory.js`；DOM 交互放 `js/nodes/node-dom-bindings.js`；序列化放 `js/nodes/node-serializer.js`。
 4. 后端保持“routes 收请求，services 放逻辑”的边界。
-5. 新样式优先放到对应的 `css/features/`、`css/components/`、`css/layout/`；`css/legacy.css` 只承接遗留样式。
+5. 新样式优先放到对应的 `css/features/`、`css/components/`、`css/modules/`；`css/legacy.css` 只承接遗留样式。新增 CSS 模块后需在 `index.html` 中添加对应的 `<link>` 标签以保持并行加载。
 6. 新增可复用弹窗时优先看 `js/features/ui/dialog-style-1.js`；只属于设置面板上下文的帮助或浮层放 `js/features/settings/settings-controller.js` 与 `css/features/settings.css`，不要混进全局帮助面板。
 7. 新增面板入口时同步检查 `index.html` 的 DOM、`js/features/ui/panel-manager.js` 的面板注册、`js/features/ui/ui-controller.js` 的按钮绑定，以及对应 CSS token。
 
@@ -89,7 +89,7 @@ description: CainFlow 项目导航 Skill。用于修改功能、重构或排查�
 - 画布平移/滚轮缩放属于高频交互：只更新 `nodes-layer` / `connections-group` / 网格的整体 transform；不要在每帧调用完整 `updateAllConnections()` 重算所有端口和 SVG path，节点移动/尺寸变化/连线结构变化时才做完整重算。
 - 批量连线模式在 `js/canvas/batch-connection-mode.js`，入口来自右键菜单 `context-menu-batch-connection-mode`；它会用左上角悬浮通知提示当前状态，并按可见端口、类型匹配和输入口空闲状态自动连接。改批量连线时同步检查 `context-menu-controller.js`、`state.batchConnectionMode`、节点 running 禁止规则、端口样式刷新和历史记录。
 - 参考图数量、克隆节点数量、节点重命名和请求体预览这些右键菜单小弹窗当前集中在 `js/features/ui/context-menu-controller.js`，复用 `.reference-image-count-dialog` 一套结构样式；新增右键小弹窗前先评估能否复用 `dialog-style-1.js` 或现有右键弹窗样式。
-- `TextInput`、`TextDisplay` 仍是旧工作流兼容类型，正式文本节点看 `Text` 和 `TextSplit`。
+- `TextInput`、`TextDisplay` 只在旧工作流载入阶段做兼容迁移，运行态正式文本节点只看 `Text` 和 `TextSplit`。
 
 ### 设置、更新与启动
 
@@ -98,7 +98,7 @@ description: CainFlow 项目导航 Skill。用于修改功能、重构或排查�
 - 在线更新能力集中在 `js/features/update/update-manager.js`、`backend/routes/update_routes.py`、`backend/services/update_service.py`。
 - 版本号单一来源是 `js/core/constants.js` 的 `APP_VERSION_NUMBER`。
 - 自动更新检查总开关是 `AUTO_UPDATE_CHECK_DISABLED`；开启禁用后，`index.js` 不排队自动检查，`settings-controller.js` 不渲染更新卡片。手动检查与下载逻辑是否保留，要按当前常量链一起确认。
-- API 供应商锁定开关是 `API_PROVIDERS_LOCKED`；它不仅影响新增/删除按钮，也影响配置导入、会话恢复、供应商 endpoint 只读态和默认模型绑定。
+- API 供应商锁定开关是 `API_PROVIDERS_LOCKED`；它不仅影响新增/删除按钮，也影响配置导入、会话恢复、供应商 endpoint 只读态和默认模型绑定。现在还要额外区分“首次打开项目”和“恢复已有本地状态”：锁定开启且本地还没有 `nodeflow_ai_state` 时，启动阶段不会默认注入 6789 / GXP 供应商，这条判断收口在 `js/app/create-app-context.js` 与 `js/core/state.js`，不要误改到 `project-io.js` 的恢复链路里。
 - 前端 ES module import 不要手写 `?v=...` 查询串；静态资源缓存版本由 `APP_ASSET_VERSION` 派生，临时查询串很容易绕过单一版本源。
 - 源码启动链路主要看 `start_cainflow.bat`、`server.py`、`backend/main.py`。
 - 后端启动后如果终端持续刷一串静态资源或 200/304 访问记录，优先看 `backend/handler.py` 的 `ProxyHTTPRequestHandler.log_message()`；这通常是 `http.server.SimpleHTTPRequestHandler` 的默认控制台访问日志，不是 `backend/main.py` 的启动 banner。

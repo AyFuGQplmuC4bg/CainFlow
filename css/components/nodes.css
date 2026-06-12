@@ -884,8 +884,9 @@
     --compare-x: 50%;
     position: relative;
     width: 100%;
+    min-width: 0;
     min-height: 160px;
-    max-height: 420px;
+    max-height: none;
     flex: 1 1 auto;
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -938,6 +939,11 @@
     z-index: auto;
     justify-content: flex-start;
     margin-bottom: 0;
+    flex: 0 0 auto;
+}
+
+.node-image-compare .image-resolution-badge {
+    flex: 0 0 auto;
 }
 
 .image-compare-divider {
@@ -977,7 +983,7 @@
 
 .image-compare-advanced-overlay {
     position: fixed;
-    inset: var(--app-chrome-top-offset, 0px) 0 0 var(--app-chrome-left-offset, 0px);
+    inset: 0;
     z-index: 7600;
     display: flex;
     background: rgba(8, 10, 14, 0.94);
@@ -987,6 +993,13 @@
 
 .image-compare-advanced-overlay.active {
     opacity: 1;
+}
+
+body.image-compare-advanced-active #toast-container,
+body.image-compare-advanced-active #floating-notices-container {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .image-compare-advanced-close {
@@ -1014,8 +1027,8 @@
     width: 100%;
     height: 100dvh;
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
-    gap: 14px;
+    grid-template-rows: minmax(280px, 1fr) auto;
+    gap: 0;
     padding: 18px;
 }
 
@@ -1125,10 +1138,11 @@
 }
 
 .image-compare-advanced-picker {
-    min-height: 152px;
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 10px;
+    position: relative;
+    min-height: 0;
+    min-width: 0;
+    margin-top: -1px;
+    display: block;
     padding: 12px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: var(--radius-sm);
@@ -1136,19 +1150,19 @@
 }
 
 .image-compare-advanced-actions {
+    position: absolute;
+    top: 0;
+    right: 12px;
+    z-index: 2;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 12px;
+    transform: translateY(-50%);
 }
 
 .image-compare-advanced-status {
-    min-width: 0;
-    color: rgba(255, 255, 255, 0.72);
-    font-size: 13px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: none;
 }
 
 .image-compare-advanced-buttons {
@@ -1164,7 +1178,7 @@
     padding: 0 12px;
     border: 1px solid rgba(102, 212, 189, 0.45);
     border-radius: var(--radius-xs);
-    background: rgba(102, 212, 189, 0.14);
+    background: transparent;
     color: #d8fff7;
     font-size: 13px;
     cursor: pointer;
@@ -1172,7 +1186,7 @@
 
 .image-compare-expand-btn {
     border-color: rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.08);
+    background: transparent;
     color: rgba(255, 255, 255, 0.86);
 }
 
@@ -1192,11 +1206,16 @@
 
 .image-compare-advanced-thumbs {
     min-height: 0;
+    min-width: 0;
     display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
     gap: 10px;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-bottom: 4px;
+    padding-top: 0;
+    padding-bottom: 2px;
+    padding-right: 0;
 }
 
 .image-compare-advanced-shell.is-picker-expanded .image-compare-advanced-picker {
@@ -1207,33 +1226,64 @@
 
 .image-compare-advanced-shell.is-picker-expanded .image-compare-advanced-thumbs {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     align-content: start;
+    gap: 14px;
     overflow-x: hidden;
     overflow-y: auto;
     padding: 2px 2px 8px;
 }
 
-.image-compare-thumb {
-    width: 104px;
-    min-width: 104px;
-    height: 104px;
+.image-compare-advanced-group {
+    min-width: 0;
     display: grid;
-    grid-template-rows: minmax(0, 1fr) 22px;
-    gap: 4px;
-    padding: 5px;
+    gap: 10px;
+}
+
+.image-compare-advanced-group-title {
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.image-compare-advanced-group-list {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 10px;
+}
+
+.image-compare-thumb {
+    max-width: 100%;
+    flex: 0 0 112px;
+    width: 112px;
+    aspect-ratio: 1 / 1;
+    min-width: 0;
+    height: auto;
+    position: relative;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 3px;
+    padding: 5px 5px 4px;
     border: 2px solid transparent;
     border-radius: var(--radius-sm);
     background: rgba(255, 255, 255, 0.06);
     color: rgba(255, 255, 255, 0.72);
     cursor: pointer;
+    overflow: hidden;
 }
 
 .image-compare-advanced-shell.is-picker-expanded .image-compare-thumb {
     width: 100%;
     min-width: 0;
-    height: 148px;
-    grid-template-rows: minmax(0, 1fr) 24px;
+    height: auto;
+    grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .image-compare-thumb:hover {
@@ -1255,13 +1305,62 @@
     background: rgba(0, 0, 0, 0.22);
 }
 
+.image-compare-thumb-badges {
+    position: absolute;
+    top: 9px;
+    left: 9px;
+    display: flex;
+    gap: 4px;
+    pointer-events: none;
+}
+
+.image-compare-thumb-badge {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    padding: 0;
+    display: block;
+    border-radius: 999px;
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+}
+
+.image-compare-thumb-badge-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -52%);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.image-compare-thumb-badge-a {
+    background: rgba(55, 160, 255, 0.92);
+}
+
+.image-compare-thumb-badge-b {
+    background: rgba(255, 130, 70, 0.92);
+}
+
 .image-compare-thumb span {
+    display: block;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    text-overflow: initial;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     font-size: 12px;
-    line-height: 20px;
+    line-height: 1.15;
 }
 
 .image-compare-advanced-empty-thumb {
@@ -1275,17 +1374,27 @@
 
 @media (max-width: 720px) {
     .image-compare-advanced-shell {
-        gap: 10px;
+        gap: 0;
         padding: 64px 12px 12px;
+        grid-template-rows: minmax(220px, 1fr) auto;
+    }
+
+    .image-compare-advanced-picker {
+        margin-top: -1px;
     }
 
     .image-compare-advanced-actions {
+        left: 0;
+        right: 0;
+        top: 0;
         align-items: stretch;
         flex-direction: column;
+        transform: translateY(-50%);
     }
 
     .image-compare-advanced-buttons {
         width: 100%;
+        justify-content: flex-end;
     }
 
     .image-compare-expand-btn,
@@ -1295,17 +1404,27 @@
     }
 
     .image-compare-thumb {
-        width: 88px;
-        min-width: 88px;
-        height: 96px;
+        flex-basis: calc(50% - 5px);
+        width: calc(50% - 5px);
+        min-width: 0;
+        height: auto;
+    }
+
+    .image-compare-advanced-thumbs {
+        padding-right: 0;
+        padding-top: 6px;
     }
 
     .image-compare-advanced-shell.is-picker-expanded .image-compare-advanced-thumbs {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .image-compare-advanced-group-list {
         grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
     }
 
     .image-compare-advanced-shell.is-picker-expanded .image-compare-thumb {
-        height: 124px;
+        height: auto;
     }
 }
 /* 承载节点组件相关样式入口，便于后续细分节点视觉规则。 */

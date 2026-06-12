@@ -12,7 +12,11 @@ export function createCanvasInteractionsApi({
     getPortPosition,
     drawTempConnection,
     updateAllConnections,
+    updateDirtyConnections = null,
     updateDraggingConnections = null,
+    scheduleConnectionRefresh = null,
+    invalidateNodePortCache = null,
+    markNodeConnectionsDirty = null,
     clearConnectionInsertPreview = null,
     commitConnectionInsertPreview = null,
     detachNodesFromConnections = null,
@@ -62,11 +66,35 @@ export function createCanvasInteractionsApi({
         rafUpdate = requestAnimationFrameRef(() => {
             if (state.dragging && updateDraggingConnections) {
                 updateDraggingConnections(state.dragging);
+            } else if (typeof scheduleConnectionRefresh === 'function') {
+                scheduleConnectionRefresh({ reason: 'canvas-ui-frame' });
             } else {
                 updateAllConnections();
             }
             rafUpdate = null;
         });
+    }
+
+    function refreshNodeConnections(nodeId, { force = false } = {}) {
+        if (typeof scheduleConnectionRefresh === 'function') {
+            scheduleConnectionRefresh({
+                nodeIds: nodeId,
+                force,
+                immediate: force,
+                reason: 'canvas-node-geometry'
+            });
+            return;
+        }
+        if (typeof invalidateNodePortCache === 'function') {
+            invalidateNodePortCache(nodeId);
+        } else if (typeof markNodeConnectionsDirty === 'function') {
+            markNodeConnectionsDirty(nodeId);
+        }
+        if (!force && typeof updateDirtyConnections === 'function') {
+            updateDirtyConnections();
+            return;
+        }
+        updateAllConnections();
     }
 
     function schedulePanTransformUpdate() {
@@ -103,24 +131,116 @@ export function createCanvasInteractionsApi({
         if (!targets.length) return;
 
         const delta = Number(nextNodeHeight) - Number(resizeState.startHeight);
-        const totalWeight = targets.reduce((sum, target) => {
-            return sum + Math.max(1, Number(target.weight) || Number(target.startHeight) || 1);
-        }, 0) || targets.length;
-
-        targets.forEach((target) => {
+        const activeTargets = targets.map((target) => {
             const resizeEl = target?.el;
-            if (!resizeEl?.isConnected) return;
-            const weight = Math.max(1, Number(target.weight) || Number(target.startHeight) || 1);
-            const ratio = weight / totalWeight;
+            if (!resizeEl?.isConnected) return null;
             const minHeight = Math.max(0, Number(target.minHeight) || 0);
             const startHeight = Math.max(minHeight, Number(target.startHeight) || minHeight);
             const rawMaxHeight = Number(target.maxHeight);
             const maxHeight = Number.isFinite(rawMaxHeight) && rawMaxHeight > 0
                 ? rawMaxHeight
                 : Infinity;
-            const nextHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + delta * ratio));
-            resizeEl.style.height = `${Math.round(nextHeight)}px`;
-        });
+            return {
+                target,
+                resizeEl,
+                minHeight,
+                startHeight,
+                maxHeight,
+                nextHeight: startHeight,
+                weight: Math.max(1, Number(target.weight) || startHeight || 1),
+                clippedNeed: Math.max(0, Number(target.contentHeight) - startHeight)
+            };
+        }).filter(Boolean);
+
+        if (!activeTargets.length) return;
+
+        const applyHeights = () => {
+            activeTargets.forEach((item) => {
+                const nextHeight = Math.min(item.maxHeight, Math.max(item.minHeight, item.nextHeight));
+                item.resizeEl.style.height = `${Math.round(nextHeight)}px`;
+            });
+        };
+
+        const distributeExtra = (remainingDelta, group, getCapacity, getWeight) => {
+            let remaining = Math.max(0, Number(remainingDelta) || 0);
+            let candidates = group.filter((item) => getCapacity(item) > 0);
+
+            while (remaining > 0.001 && candidates.length) {
+                const totalWeight = candidates.reduce((sum, item) => sum + Math.max(1, getWeight(item)), 0) || candidates.length;
+                let used = 0;
+                const nextCandidates = [];
+
+                candidates.forEach((item) => {
+                    const capacity = Math.max(0, getCapacity(item));
+                    if (capacity <= 0) return;
+                    const share = remaining * (Math.max(1, getWeight(item)) / totalWeight);
+                    const addition = Math.min(capacity, share);
+                    if (addition > 0) {
+                        item.nextHeight += addition;
+                        used += addition;
+                    }
+                    if (capacity - addition > 0.001) nextCandidates.push(item);
+                });
+
+                if (used <= 0.001) break;
+                remaining -= used;
+                candidates = nextCandidates;
+            }
+
+            return remaining;
+        };
+
+        const distributeShrink = (shrinkDelta, group) => {
+            let remaining = Math.max(0, Number(shrinkDelta) || 0);
+            let candidates = group.filter((item) => item.nextHeight - item.minHeight > 0);
+
+            while (remaining > 0.001 && candidates.length) {
+                const totalCapacity = candidates.reduce((sum, item) => {
+                    return sum + Math.max(0, item.nextHeight - item.minHeight);
+                }, 0);
+                if (totalCapacity <= 0.001) break;
+
+                let used = 0;
+                const nextCandidates = [];
+                candidates.forEach((item) => {
+                    const capacity = Math.max(0, item.nextHeight - item.minHeight);
+                    if (capacity <= 0) return;
+                    const reduction = Math.min(capacity, remaining * (capacity / totalCapacity));
+                    if (reduction > 0) {
+                        item.nextHeight -= reduction;
+                        used += reduction;
+                    }
+                    if (capacity - reduction > 0.001) nextCandidates.push(item);
+                });
+
+                if (used <= 0.001) break;
+                remaining -= used;
+                candidates = nextCandidates;
+            }
+
+            return remaining;
+        };
+
+        if (delta > 0) {
+            let remainingDelta = delta;
+            const clippedTargets = activeTargets.filter((item) => item.clippedNeed > 0);
+            remainingDelta = distributeExtra(
+                remainingDelta,
+                clippedTargets,
+                (item) => Math.min(item.clippedNeed, item.maxHeight - item.nextHeight),
+                (item) => item.clippedNeed
+            );
+            distributeExtra(
+                remainingDelta,
+                activeTargets,
+                (item) => item.maxHeight - item.nextHeight,
+                (item) => item.weight
+            );
+        } else {
+            distributeShrink(Math.abs(delta), activeTargets);
+        }
+
+        applyHeights();
     }
 
     function getFirstPositiveNumber(...values) {
@@ -221,7 +341,10 @@ export function createCanvasInteractionsApi({
         }
 
         state.pendingZoomVisualRefresh = false;
-        viewportApi.updateCanvasTransform();
+        viewportApi.updateCanvasTransform({
+            forceConnections: true,
+            connectionRefreshReason: 'zoom-settled'
+        });
         requestAnimationFrameRef(() => {
             viewportApi.refreshNodeTextRendering();
             scheduleSave();
@@ -437,7 +560,7 @@ export function createCanvasInteractionsApi({
                 state.canvas.isPanning = true;
                 state.canvas.panStart = { x: e.clientX, y: e.clientY };
                 state.canvas.canvasStart = { x: state.canvas.x, y: state.canvas.y };
-                canvasContainer.classList.add('grabbing');
+                canvasContainer.classList.add('grabbing', 'is-panning');
                 documentRef.body.classList.add('is-interacting');
                 documentRef.getElementById('connections-group').classList.add('is-panning');
                 return;
@@ -451,7 +574,11 @@ export function createCanvasInteractionsApi({
                         if (node) node.el.classList.remove('selected');
                     });
                     state.selectedNodes.clear();
-                    updateAllConnections();
+                    if (typeof scheduleConnectionRefresh === 'function') {
+                        scheduleConnectionRefresh({ force: true, reason: 'marquee-clear-selection' });
+                    } else {
+                        updateAllConnections();
+                    }
                 }
 
                 e.preventDefault();
@@ -541,7 +668,11 @@ export function createCanvasInteractionsApi({
                 box.style.height = h + 'px';
 
                 if (syncMarqueeSelection(state.marquee)) {
-                    updateAllConnections();
+                    if (typeof scheduleConnectionRefresh === 'function') {
+                        scheduleConnectionRefresh({ force: true, reason: 'marquee-selection' });
+                    } else {
+                        updateAllConnections();
+                    }
                 }
             }
             if (state.dragging) {
@@ -606,6 +737,10 @@ export function createCanvasInteractionsApi({
                 const dy = pos.y - state.dragging.startY;
                 const hasDragMovement = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
 
+                if (hasDragMovement && state.dragging.deferSelectionOnDrag && !state.dragging.selectionActivated) {
+                    state.dragging.activateSelection?.();
+                }
+
                 if (hasDragMovement && !state.dragging.interactionVisualsActive) {
                     state.dragging.interactionVisualsActive = true;
                     documentRef.body.classList.add('is-interacting');
@@ -642,10 +777,8 @@ export function createCanvasInteractionsApi({
                     const targetW = r.startWidth + dx;
                     const targetH = r.startHeight + dy;
                     let dynamicMinWidth = r.minWidth;
-                    let dynamicMinHeight = r.minHeight;
                     let constrainedWidth = Math.max(targetW, r.minWidth);
                     const configuredMaxHeight = Number.isFinite(r.maxHeight) && r.maxHeight > 0 ? r.maxHeight : Infinity;
-                    distributeNodeTextareaResize(r, Math.min(targetH, configuredMaxHeight));
 
                     if (typeof getNodeMinimumSize === 'function') {
                         const provisionalMinimum = getNodeMinimumSize(node, { width: constrainedWidth });
@@ -657,18 +790,17 @@ export function createCanvasInteractionsApi({
                         const finalMinimum = getNodeMinimumSize(node, { width: constrainedWidth });
                         if (finalMinimum) {
                             dynamicMinWidth = Math.max(dynamicMinWidth, Number(finalMinimum.minWidth) || 0);
-                            dynamicMinHeight = Math.max(dynamicMinHeight, Number(finalMinimum.minHeight) || 0);
                             constrainedWidth = Math.max(targetW, dynamicMinWidth);
                         }
                     }
 
-                    const maxHeight = configuredMaxHeight >= dynamicMinHeight ? configuredMaxHeight : Infinity;
-                    const newH = Math.min(Math.max(targetH, dynamicMinHeight), maxHeight);
+                    const maxHeight = configuredMaxHeight >= r.minHeight ? configuredMaxHeight : Infinity;
+                    const newH = Math.min(Math.max(targetH, r.minHeight), maxHeight);
                     node.el.style.width = constrainedWidth + 'px';
                     node.el.style.height = newH + 'px';
                     distributeNodeTextareaResize(r, newH);
 
-                    updateAllConnections();
+                    refreshNodeConnections(r.nodeId);
                 }
             }
             if (state.connecting) {
@@ -708,8 +840,11 @@ export function createCanvasInteractionsApi({
                     scheduleSave();
                 }
                 state.canvas.isPanning = false;
-                canvasContainer.classList.remove('grabbing');
-                viewportApi.updateCanvasTransform();
+                canvasContainer.classList.remove('grabbing', 'is-panning');
+                viewportApi.updateCanvasTransform({
+                    forceConnections: true,
+                    connectionRefreshReason: 'pan-settled'
+                });
                 notifyViewportSettled();
             }
             if (state.marquee) {
@@ -719,7 +854,15 @@ export function createCanvasInteractionsApi({
                 state.marquee.endCanvasX = endCanvas.x;
                 state.marquee.endCanvasY = endCanvas.y;
                 if (syncMarqueeSelection(state.marquee)) {
-                    updateAllConnections();
+                    if (typeof scheduleConnectionRefresh === 'function') {
+                        scheduleConnectionRefresh({
+                            force: true,
+                            immediate: true,
+                            reason: 'marquee-selection-end'
+                        });
+                    } else {
+                        updateAllConnections();
+                    }
                 }
 
                 const dw = Math.abs(state.marquee.startX - e.clientX);
@@ -755,8 +898,18 @@ export function createCanvasInteractionsApi({
                 } else if (clearConnectionInsertPreview) {
                     clearConnectionInsertPreview();
                 }
+                const draggedNodeIds = state.dragging.nodes.slice();
                 state.dragging = null;
-                updateAllConnections();
+                if (typeof scheduleConnectionRefresh === 'function') {
+                    scheduleConnectionRefresh({
+                        nodeIds: draggedNodeIds,
+                        force: true,
+                        immediate: true,
+                        reason: 'drag-end'
+                    });
+                } else {
+                    updateAllConnections();
+                }
                 scheduleSave();
             }
             if (state.resizing) {
@@ -765,11 +918,12 @@ export function createCanvasInteractionsApi({
                 if (node) {
                     let finalWidth = parseInt(node.el.style.width, 10);
                     let finalHeight = parseInt(node.el.style.height, 10);
+                    distributeNodeTextareaResize(r, finalHeight);
                     if (typeof getNodeMinimumSize === 'function') {
                         let minimum = getNodeMinimumSize(node, { width: finalWidth });
                         finalWidth = Math.max(finalWidth, Number(minimum?.minWidth) || 0);
                         minimum = getNodeMinimumSize(node, { width: finalWidth });
-                        finalHeight = Math.max(finalHeight, Number(minimum?.minHeight) || 0);
+                        finalHeight = Math.max(finalHeight, Number(r.minHeight) || 0);
                         node.el.style.width = `${Math.round(finalWidth)}px`;
                         node.el.style.height = `${Math.round(finalHeight)}px`;
                     }
@@ -780,21 +934,8 @@ export function createCanvasInteractionsApi({
                     node.observedHeight = node.height;
                     node.userResized = true;
 
-                    if (typeof enforceNodeContentMinimum === 'function') {
-                        const enforced = enforceNodeContentMinimum(r.nodeId, {
-                            save: false,
-                            updateConnections: false
-                        });
-                        if (enforced) {
-                            node.width = Math.round(enforced.width);
-                            node.height = Math.round(enforced.height);
-                            node.observedWidth = node.width;
-                            node.observedHeight = node.height;
-                        }
-                    }
-
                     node.el.classList.remove('is-interacting');
-                    updateAllConnections();
+                    refreshNodeConnections(r.nodeId, { force: true });
                 }
                 state.resizing = null;
                 scheduleSave();

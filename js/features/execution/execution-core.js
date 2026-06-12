@@ -1025,7 +1025,7 @@ export function createExecutionCoreApi({
                 return node.data.texts.filter((item) => typeof item === 'string' && item.trim());
             }
 
-            if (node.type === 'Text' || node.type === 'TextInput') {
+            if (node.type === 'Text') {
                 return documentRef.getElementById(`${node.id}-text`)?.value;
             }
 
@@ -1040,12 +1040,6 @@ export function createExecutionCoreApi({
                 return responseText || undefined;
             }
 
-            if (node.type === 'TextDisplay') {
-                const display = documentRef.getElementById(`${node.id}-display`);
-                const text = display?.textContent?.trim() || '';
-                if (!text || text === '等待输入文本...' || text === '当前无输入文本') return undefined;
-                return text;
-            }
         }
 
         if (node.data && node.data[portName] !== undefined) {
@@ -1088,12 +1082,40 @@ export function createExecutionCoreApi({
     function getCustomParamsFromNode(node) {
         const rows = Array.from(documentRef.querySelectorAll(`#${node.id}-params-list [data-param-row]`));
         const params = {};
+        const validKeys = new Set(); // 记录当前有效的参数名
+
+        // 首先从UI输入框获取参数
         rows.forEach((row) => {
             const key = row.querySelector('.custom-param-key')?.value?.trim() || '';
             if (!key) return;
+            validKeys.add(key);
             const value = row.querySelector('.custom-param-value')?.value || '';
             params[key] = coerceCustomParamValue(value);
         });
+
+        // 然后从端口连接覆盖参数值（但只处理当前有效的参数）
+        const inputs = collectCachedInputsForNode(node.id);
+        Object.keys(inputs).forEach((portName) => {
+            // 端口名格式为 param_{key}
+            const match = portName.match(/^param_(.+)$/);
+            if (!match) return;
+            const key = match[1];
+
+            // 只有当这个参数在UI中存在时，才使用端口连接的值
+            if (!validKeys.has(key)) return;
+
+            const value = inputs[portName];
+
+            // 如果是图片数据（base64字符串），直接使用
+            if (typeof value === 'string' && value.startsWith('data:image/')) {
+                params[key] = value;
+            } else if (typeof value === 'string') {
+                params[key] = coerceCustomParamValue(value);
+            } else {
+                params[key] = value;
+            }
+        });
+
         node.data = node.data || {};
         node.data.params = Object.entries(params).map(([key, value]) => ({ key, value }));
         return params;
@@ -1363,9 +1385,17 @@ export function createExecutionCoreApi({
         const systemPrompt = (getPrimaryTextInput(inputs.system_prompt) || documentRef.getElementById(`${id}-system-prompt`)?.value || '').trim();
         const userPrompt = (getPrimaryTextInput(inputs.prompt) || documentRef.getElementById(`${id}-prompt`)?.value || '').trim();
         const cameraPrompt = getPrimaryTextInput(inputs.camera_prompt).trim();
-        return [systemPrompt, userPrompt, cameraPrompt]
-            .filter((part) => typeof part === 'string' && part.trim())
-            .join(', ');
+        const promptSections = [];
+        if (systemPrompt) {
+            promptSections.push(`System instruction:\n${systemPrompt}`);
+        }
+        if (userPrompt) {
+            promptSections.push(`Main subject prompt:\n${userPrompt}`);
+        }
+        if (cameraPrompt) {
+            promptSections.push(`Camera composition instruction:\n${cameraPrompt}`);
+        }
+        return promptSections.join('\n\n');
     }
 
     async function getOpenAiMaskBlob(mask, signal) {
@@ -2318,9 +2348,6 @@ export function createExecutionCoreApi({
                 await refreshDependentImageResizePreviews(id);
             }
         },
-        TextInput: async (node) => {
-            node.data.text = documentRef.getElementById(`${node.id}-text`).value;
-        },
         Text: async (node, inputs = {}) => {
             const textarea = documentRef.getElementById(`${node.id}-text`);
             const hasIncomingText = Object.prototype.hasOwnProperty.call(inputs, 'text');
@@ -2405,15 +2432,6 @@ export function createExecutionCoreApi({
                     outputs[`part_${index + 1}`] = part;
                     return outputs;
                 }, {});
-        },
-        TextDisplay: async (node, inputs) => {
-            const text = getPrimaryTextInput(inputs.text);
-            const display = documentRef.getElementById(`${node.id}-display`);
-            if (display) {
-                display.textContent = text || '当前无输入文本';
-                node.data.text = text;
-                updateAllConnections();
-            }
         }
     };
 

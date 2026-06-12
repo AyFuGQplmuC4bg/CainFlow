@@ -20,14 +20,20 @@ export function createConnectionsApi({
     documentRef = document
 }) {
     const pathById = new Map();
+    const connectionById = new Map();
+    const connectionsByNodeId = new Map();
+    const connectionsByPortKey = new Map();
+    const dirtyConnectionIds = new Set();
     const flowDecorationById = new Map();
     const insertionPreviewPaths = [];
     let flowAnimationFrame = null;
+    let connectionIndexSignature = '';
+    let laneMapCacheSignature = '';
+    let laneMapCache = new Map();
     const view = documentRef.defaultView || window;
     const INSERTION_PREVIEW_PADDING = 24;
     const OUTPUT_PORT_TRANSITION = 28;
     const INPUT_PORT_TURN_LEAD = 72;
-    const PORT_EDGE_GAP = 2;
     const PAIR_LANE_GAP = 14;
     const PORT_LANE_GAP = 6;
     const NODE_LANE_GAP = 4;
@@ -35,6 +41,78 @@ export function createConnectionsApi({
     const FLOW_ANIMATION_TARGET_FPS = 60;
     const FLOW_ANIMATION_FRAME_MS = 1000 / FLOW_ANIMATION_TARGET_FPS;
     let lastFlowAnimationTime = 0;
+
+    function getConnectionSignature(connections = state.connections) {
+        return connections.map((conn) => (
+            `${conn?.id || ''}:${conn?.from?.nodeId || ''}.${conn?.from?.port || ''}>${conn?.to?.nodeId || ''}.${conn?.to?.port || ''}:${conn?.type || ''}`
+        )).join('|');
+    }
+
+    function addToSetMap(map, key, value) {
+        if (!key) return;
+        if (!map.has(key)) map.set(key, new Set());
+        map.get(key).add(value);
+    }
+
+    function getPortKey(nodeId, portName, direction) {
+        return `${nodeId || ''}:${direction || ''}:${portName || ''}`;
+    }
+
+    function invalidateConnectionLaneCache() {
+        laneMapCacheSignature = '';
+        laneMapCache = new Map();
+    }
+
+    function rebuildConnectionIndex() {
+        connectionById.clear();
+        connectionsByNodeId.clear();
+        connectionsByPortKey.clear();
+
+        state.connections.forEach((connection) => {
+            if (!connection?.id) return;
+            connectionById.set(connection.id, connection);
+            addToSetMap(connectionsByNodeId, connection.from?.nodeId, connection.id);
+            addToSetMap(connectionsByNodeId, connection.to?.nodeId, connection.id);
+            addToSetMap(connectionsByPortKey, getPortKey(connection.from?.nodeId, connection.from?.port, 'output'), connection.id);
+            addToSetMap(connectionsByPortKey, getPortKey(connection.to?.nodeId, connection.to?.port, 'input'), connection.id);
+        });
+
+        connectionIndexSignature = getConnectionSignature();
+        dirtyConnectionIds.clear();
+        invalidateConnectionLaneCache();
+    }
+
+    function ensureConnectionIndex() {
+        const nextSignature = getConnectionSignature();
+        if (nextSignature !== connectionIndexSignature) {
+            rebuildConnectionIndex();
+        }
+    }
+
+    function getConnectionById(connId) {
+        ensureConnectionIndex();
+        return connectionById.get(connId) || null;
+    }
+
+    function getConnectionIdsForNode(nodeId) {
+        ensureConnectionIndex();
+        return Array.from(connectionsByNodeId.get(nodeId) || []);
+    }
+
+    function markConnectionDirty(connId) {
+        if (connId) dirtyConnectionIds.add(connId);
+    }
+
+    function markNodeConnectionsDirty(nodeId) {
+        getConnectionIdsForNode(nodeId).forEach((connId) => dirtyConnectionIds.add(connId));
+        invalidateConnectionLaneCache();
+    }
+
+    function markAllConnectionsDirty() {
+        ensureConnectionIndex();
+        connectionById.forEach((_, connId) => dirtyConnectionIds.add(connId));
+        invalidateConnectionLaneCache();
+    }
 
     function isGlobalAnimationEnabled() {
         return state.globalAnimationEnabled !== false;
@@ -118,6 +196,106 @@ export function createConnectionsApi({
         outputGroups.forEach((group) => addCenteredLaneOffsets(laneById, group, PORT_LANE_GAP, 0.7));
         targetGroups.forEach((group) => addCenteredLaneOffsets(laneById, group, NODE_LANE_GAP, 0.55));
         return laneById;
+    }
+
+    function getConnectionLaneMap() {
+        const signature = getConnectionSignature();
+        if (signature !== laneMapCacheSignature) {
+            laneMapCache = buildConnectionLaneMap(state.connections);
+            laneMapCacheSignature = signature;
+        }
+        return laneMapCache;
+    }
+
+    function getNodePortCacheSignature(node) {
+        if (!node?.el) return '';
+        const bounds = getNodeBounds(node);
+        const collapsed = node.collapsed === true || node.el.classList.contains('collapsed') ? '1' : '0';
+        const domWidth = node.el.offsetWidth || 0;
+        const domHeight = node.el.offsetHeight || 0;
+        const scrollWidth = node.el.scrollWidth || 0;
+        const scrollHeight = node.el.scrollHeight || 0;
+        const ports = Array.from(node.el.querySelectorAll?.('.node-port[data-direction]') || []);
+        const portState = ports.map((portEl) => (
+            `${portEl.dataset.direction || ''}:${portEl.dataset.port || ''}:${portEl.classList.contains('hidden') ? 'h' : 'v'}:${portEl.classList.contains('is-hidden-by-collapse') ? 'c' : 'o'}`
+        )).join('|');
+        return `${Math.round(bounds.right - bounds.left)}:${Math.round(bounds.bottom - bounds.top)}:${domWidth}:${domHeight}:${scrollWidth}:${scrollHeight}:${collapsed}:${portState}`;
+    }
+
+    function getPortElement(node, portName, direction) {
+        if (!node?.el) return null;
+        return Array.from(node.el.querySelectorAll?.('.node-port[data-direction]') || [])
+            .find((portEl) => (
+                portEl.dataset.port === portName &&
+                portEl.dataset.direction === direction
+            )) || null;
+    }
+
+    function isPortElementVisible(portEl) {
+        if (!portEl) return false;
+        const dot = portEl.querySelector('.port-dot') || portEl;
+        const dotRect = dot.getBoundingClientRect();
+        return !portEl.classList.contains('hidden') &&
+            !portEl.classList.contains('is-hidden-by-collapse') &&
+            portEl.offsetParent !== null &&
+            dotRect.width > 0 &&
+            dotRect.height > 0;
+    }
+
+    function getPortDotWorldPosition(portEl, containerRectOverride = null) {
+        if (!portEl) return null;
+        const dot = portEl.querySelector('.port-dot') || portEl;
+        const dotRect = dot.getBoundingClientRect();
+        if (dotRect.width <= 0 || dotRect.height <= 0) return null;
+
+        const containerRect = containerRectOverride || canvasContainer.getBoundingClientRect();
+        const { x: cx, y: cy } = state.canvas;
+        const zoom = Math.max(0.0001, Number(state.canvas?.zoom) || 1);
+        return {
+            x: (dotRect.left + dotRect.width / 2 - containerRect.left - cx) / zoom,
+            y: (dotRect.top + dotRect.height / 2 - containerRect.top - cy) / zoom
+        };
+    }
+
+    function invalidateNodePortCache(nodeId = null) {
+        if (nodeId) {
+            const node = getNodeById(nodeId);
+            if (node) delete node._portPositionCache;
+            markNodeConnectionsDirty(nodeId);
+            return;
+        }
+        state.nodes.forEach((node) => {
+            if (node) delete node._portPositionCache;
+        });
+        markAllConnectionsDirty();
+    }
+
+    function measureNodePorts(nodeId, containerRectOverride = null) {
+        const node = getNodeById(nodeId);
+        if (!node?.el) return null;
+        const ports = Array.from(node.el.querySelectorAll?.('.node-port[data-direction]') || []);
+        const cache = {
+            signature: getNodePortCacheSignature(node),
+            ports: new Map()
+        };
+
+        ports.forEach((portEl) => {
+            const portName = portEl.dataset.port || '';
+            const direction = portEl.dataset.direction || '';
+            if (!portName || !direction) return;
+            const worldPosition = getPortDotWorldPosition(portEl, containerRectOverride);
+            const visible = isPortElementVisible(portEl);
+            cache.ports.set(getPortKey(nodeId, portName, direction), {
+                dx: worldPosition ? worldPosition.x - node.x : 0,
+                dy: worldPosition ? worldPosition.y - node.y : 0,
+                visible
+            });
+        });
+
+        if (!state.dragging && !state.canvas?.isPanning) {
+            node._portPositionCache = cache;
+        }
+        return cache;
     }
 
     function createFlowArrowElement() {
@@ -298,37 +476,15 @@ export function createConnectionsApi({
             if (offset) return { x: node.x + offset.dx, y: node.y + offset.dy };
         }
 
-        const portEl = node.el.querySelector(`.node-port[data-node-id="${nodeId}"][data-port="${portName}"][data-direction="${direction}"]`);
+        const portEl = getPortElement(node, portName, direction);
         if (!portEl) return { x: node.x, y: node.y };
-        const dot = portEl.querySelector('.port-dot');
-        const dotRect = dot.getBoundingClientRect();
-        const containerRect = containerRectOverride || canvasContainer.getBoundingClientRect();
-        const { x: cx, y: cy, zoom } = state.canvas;
-        const bounds = getNodeBounds(node);
-        const y = (dotRect.top + dotRect.height / 2 - containerRect.top - cy) / zoom;
-        if (direction === 'input') {
-            return {
-                x: bounds.left - PORT_EDGE_GAP,
-                y
-            };
-        }
-        if (direction === 'output') {
-            return {
-                x: bounds.right + PORT_EDGE_GAP,
-                y
-            };
-        }
-        return {
-            x: (dotRect.left + dotRect.width / 2 - containerRect.left - cx) / zoom,
-            y
-        };
+        return getPortDotWorldPosition(portEl, containerRectOverride) || { x: node.x, y: node.y };
     }
 
     function isConnectionEndpointVisible(nodeId, portName, direction) {
         const node = getNodeById(nodeId);
-        const portEl = node?.el?.querySelector(`.node-port[data-node-id="${nodeId}"][data-port="${portName}"][data-direction="${direction}"]`);
-        if (!portEl) return false;
-        return !portEl.classList.contains('hidden') && portEl.offsetParent !== null;
+        if (!node?.el) return false;
+        return isPortElementVisible(getPortElement(node, portName, direction));
     }
 
     function getNodeBounds(node) {
@@ -644,10 +800,116 @@ export function createConnectionsApi({
         );
     }
 
+    function getCurrentConnectionViewport(containerRect = null) {
+        const { x, y, zoom } = state.canvas;
+        const rect = containerRect || canvasContainer.getBoundingClientRect();
+        return {
+            left: -x / zoom,
+            top: -y / zoom,
+            right: (rect.width - x) / zoom,
+            bottom: (rect.height - y) / zoom
+        };
+    }
+
+    function getActiveConnectionSelectionInfo() {
+        const relationCache = state.activeNodeRelationCache || {};
+        return {
+            activeNodeId: relationCache.anchorNodeId || state.activeNodeId || null,
+            incomingConnectionIds: new Set(relationCache.incomingConnectionIds || []),
+            outgoingConnectionIds: new Set(relationCache.outgoingConnectionIds || [])
+        };
+    }
+
+    function ensureConnectionPath(conn) {
+        let path = pathById.get(conn.id);
+        if (path) return path;
+
+        path = documentRef.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('data-conn-id', conn.id);
+        path.classList.add('connection-path');
+        path.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            if (hasRunningEndpoint(conn)) {
+                showToast('节点正在运行，暂不能修改连线', 'warning');
+                return;
+            }
+            state.connections = state.connections.filter((candidate) => candidate.id !== conn.id);
+            pathById.get(conn.id)?.remove();
+            pathById.delete(conn.id);
+            removeFlowDecoration(conn.id);
+            rebuildConnectionIndex();
+            updateAllConnections();
+            updatePortStyles();
+            showToast('连接已删除', 'info');
+            scheduleSave();
+            onConnectionsChanged();
+        });
+        connectionsGroup.appendChild(path);
+        pathById.set(conn.id, path);
+        return path;
+    }
+
+    function renderConnectionPath(conn, context = {}) {
+        if (!conn?.id) return false;
+        const {
+            containerRect = canvasContainer.getBoundingClientRect(),
+            viewport = getCurrentConnectionViewport(containerRect),
+            laneById = getConnectionLaneMap(),
+            selectionInfo = getActiveConnectionSelectionInfo(),
+            padding = 100
+        } = context;
+        let path = pathById.get(conn.id);
+        const fromNode = getNodeById(conn.from?.nodeId);
+        const toNode = getNodeById(conn.to?.nodeId);
+        if (!fromNode || !toNode) {
+            if (path) {
+                path.setAttribute('d', '');
+                updateFlowDecoration(path, conn.id, false);
+            }
+            return false;
+        }
+
+        const isFromVisible = isNodeVisibleInViewport(fromNode, viewport, padding);
+        const isToVisible = isNodeVisibleInViewport(toNode, viewport, padding);
+        if (!isFromVisible && !isToVisible && path) {
+            path.setAttribute('d', '');
+            updateFlowDecoration(path, conn.id, false);
+            return false;
+        }
+
+        const endpointsVisible = isConnectionEndpointVisible(conn.from.nodeId, conn.from.port, 'output') &&
+            isConnectionEndpointVisible(conn.to.nodeId, conn.to.port, 'input');
+        if (!endpointsVisible && path) {
+            path.setAttribute('d', '');
+            updateFlowDecoration(path, conn.id, false);
+            return false;
+        }
+        if (!endpointsVisible) return false;
+
+        const from = getPortPosition(conn.from.nodeId, conn.from.port, 'output', containerRect);
+        const to = getPortPosition(conn.to.nodeId, conn.to.port, 'input', containerRect);
+        const pathStr = createBezierPath(from.x, from.y, to.x, to.y, getConnectionPathOptions(conn, laneById));
+        const isSelected = state.selectedNodes.has(conn.from.nodeId) ||
+            state.selectedNodes.has(conn.to.nodeId) ||
+            conn.from.nodeId === selectionInfo.activeNodeId ||
+            conn.to.nodeId === selectionInfo.activeNodeId ||
+            selectionInfo.incomingConnectionIds.has(conn.id) ||
+            selectionInfo.outgoingConnectionIds.has(conn.id);
+
+        path = ensureConnectionPath(conn);
+        path.setAttribute('d', pathStr);
+        path.classList.toggle('selected', isSelected);
+        path.removeAttribute('stroke');
+        updateFlowDecoration(path, conn.id, hasRunningEndpoint(conn));
+        return true;
+    }
+
     function updateAllConnections() {
         const { x, y, zoom } = state.canvas;
         const isDragging = !!state.dragging;
         const isPanning = state.canvas.isPanning;
+        ensureConnectionIndex();
+        invalidateConnectionLaneCache();
 
         connectionsGroup.setAttribute('transform', `translate(${x}, ${y}) scale(${zoom})`);
         if (originAxes) {
@@ -670,86 +932,60 @@ export function createConnectionsApi({
         });
 
         const containerRect = canvasContainer.getBoundingClientRect();
-        const viewport = {
-            left: -x / zoom,
-            top: -y / zoom,
-            right: (containerRect.width - x) / zoom,
-            bottom: (containerRect.height - y) / zoom
+        const context = {
+            containerRect,
+            viewport: getCurrentConnectionViewport(containerRect),
+            laneById: getConnectionLaneMap(),
+            selectionInfo: getActiveConnectionSelectionInfo(),
+            padding: 100
         };
-        const padding = 100;
-        const laneById = buildConnectionLaneMap(state.connections);
 
         for (const conn of state.connections) {
-            let path = pathById.get(conn.id);
-
-            const fromNode = getNodeById(conn.from.nodeId);
-            const toNode = getNodeById(conn.to.nodeId);
-            if (fromNode && toNode) {
-                const isFromVisible = isNodeVisibleInViewport(fromNode, viewport, padding);
-                const isToVisible = isNodeVisibleInViewport(toNode, viewport, padding);
-                if (!isFromVisible && !isToVisible && path) {
-                    path.setAttribute('d', '');
-                    updateFlowDecoration(path, conn.id, false);
-                    continue;
-                }
-            }
-
-            const endpointsVisible = isConnectionEndpointVisible(conn.from.nodeId, conn.from.port, 'output') &&
-                isConnectionEndpointVisible(conn.to.nodeId, conn.to.port, 'input');
-            if (!endpointsVisible && path) {
-                path.setAttribute('d', '');
-                updateFlowDecoration(path, conn.id, false);
-                continue;
-            }
-            if (!endpointsVisible) continue;
-
-            const from = getPortPosition(conn.from.nodeId, conn.from.port, 'output', containerRect);
-            const to = getPortPosition(conn.to.nodeId, conn.to.port, 'input', containerRect);
-            const pathStr = createBezierPath(from.x, from.y, to.x, to.y, getConnectionPathOptions(conn, laneById));
-            const relationCache = state.activeNodeRelationCache || {};
-            const activeNodeId = relationCache.anchorNodeId || state.activeNodeId || null;
-            const incomingConnectionIds = new Set(relationCache.incomingConnectionIds || []);
-            const outgoingConnectionIds = new Set(relationCache.outgoingConnectionIds || []);
-            const isSelected = state.selectedNodes.has(conn.from.nodeId) ||
-                state.selectedNodes.has(conn.to.nodeId) ||
-                conn.from.nodeId === activeNodeId ||
-                conn.to.nodeId === activeNodeId ||
-                incomingConnectionIds.has(conn.id) ||
-                outgoingConnectionIds.has(conn.id);
-            const shouldAnimateFlow = hasRunningEndpoint(conn);
-
-            if (!path) {
-                path = documentRef.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('data-conn-id', conn.id);
-                path.classList.add('connection-path');
-                path.addEventListener('dblclick', (e) => {
-                    e.stopPropagation();
-                    if (hasRunningEndpoint(conn)) {
-                        showToast('节点正在运行，暂不能修改连线', 'warning');
-                        return;
-                    }
-                    state.connections = state.connections.filter((candidate) => candidate.id !== conn.id);
-                    pathById.get(conn.id)?.remove();
-                    pathById.delete(conn.id);
-                    removeFlowDecoration(conn.id);
-                    updateAllConnections();
-                    updatePortStyles();
-                    showToast('连接已删除', 'info');
-                    scheduleSave();
-                    onConnectionsChanged();
-                });
-                connectionsGroup.appendChild(path);
-                pathById.set(conn.id, path);
-            }
-
-            path.setAttribute('d', pathStr);
-            path.classList.toggle('selected', isSelected);
-            path.removeAttribute('stroke');
-            updateFlowDecoration(path, conn.id, shouldAnimateFlow);
+            renderConnectionPath(conn, context);
         }
 
+        dirtyConnectionIds.clear();
         renderConnectionInsertPreview();
         ensureFlowAnimation();
+    }
+
+    function updateDirtyConnections(options = {}) {
+        ensureConnectionIndex();
+        if (options.force === true) {
+            return updateAllConnections();
+        }
+        if (dirtyConnectionIds.size === 0) return false;
+
+        const { x, y, zoom } = state.canvas;
+        connectionsGroup.setAttribute('transform', `translate(${x}, ${y}) scale(${zoom})`);
+        if (originAxes) {
+            originAxes.setAttribute('transform', `translate(${x}, ${y}) scale(${zoom})`);
+        }
+
+        const containerRect = canvasContainer.getBoundingClientRect();
+        const context = {
+            containerRect,
+            viewport: getCurrentConnectionViewport(containerRect),
+            laneById: getConnectionLaneMap(),
+            selectionInfo: getActiveConnectionSelectionInfo(),
+            padding: 100
+        };
+
+        Array.from(dirtyConnectionIds).forEach((connId) => {
+            const conn = getConnectionById(connId);
+            if (!conn) {
+                pathById.get(connId)?.remove();
+                pathById.delete(connId);
+                removeFlowDecoration(connId);
+                return;
+            }
+            renderConnectionPath(conn, context);
+        });
+
+        dirtyConnectionIds.clear();
+        renderConnectionInsertPreview();
+        ensureFlowAnimation();
+        return true;
     }
 
     function updateDraggingConnections(draggingState) {
@@ -766,13 +1002,19 @@ export function createConnectionsApi({
         }
         connectionsGroup.classList.add('is-dragging');
 
+        invalidateConnectionLaneCache();
         const containerRect = canvasContainer.getBoundingClientRect();
-        const laneById = buildConnectionLaneMap(state.connections);
+        const context = {
+            containerRect,
+            viewport: getCurrentConnectionViewport(containerRect),
+            laneById: getConnectionLaneMap(),
+            selectionInfo: getActiveConnectionSelectionInfo(),
+            padding: 100
+        };
         for (const { conn, pathEl } of draggingState.connectionsToUpdate) {
-            if (!pathEl?.isConnected) continue;
-            const from = getPortPosition(conn.from.nodeId, conn.from.port, 'output', containerRect);
-            const to = getPortPosition(conn.to.nodeId, conn.to.port, 'input', containerRect);
-            pathEl.setAttribute('d', createBezierPath(from.x, from.y, to.x, to.y, getConnectionPathOptions(conn, laneById)));
+            if (pathEl && !pathEl.isConnected) continue;
+            renderConnectionPath(conn, context);
+            dirtyConnectionIds.delete(conn?.id);
         }
 
         updateConnectionInsertPreview(draggingState);
@@ -835,7 +1077,13 @@ export function createConnectionsApi({
         if (src.nodeId === tgt.nodeId) return showToast('不能连接同一节点', 'warning');
         if (src.isOutput && tgt.dir === 'output') return showToast('不能连接两个输出', 'warning');
         if (!src.isOutput && tgt.dir === 'input') return showToast('不能连接两个输入', 'warning');
-        if (src.dataType !== (tgt.type || tgt.dataType)) return showToast('类型不匹配', 'warning');
+
+        // 类型检查：如果目标类型是 'any'，则接受任何输入；否则必须类型匹配
+        const targetType = tgt.type || tgt.dataType;
+        const sourceType = src.dataType;
+        if (targetType !== 'any' && sourceType !== targetType) {
+            return showToast('类型不匹配', 'warning');
+        }
 
         const fromId = src.isOutput ? src.nodeId : tgt.nodeId;
         const fromPort = src.isOutput ? src.portName : tgt.port;
@@ -913,7 +1161,13 @@ export function createConnectionsApi({
 
     return {
         getPortPosition,
+        invalidateNodePortCache,
+        measureNodePorts,
+        markConnectionDirty,
+        markNodeConnectionsDirty,
+        rebuildConnectionIndex,
         updateAllConnections,
+        updateDirtyConnections,
         updateDraggingConnections,
         clearConnectionInsertPreview,
         commitConnectionInsertPreview,

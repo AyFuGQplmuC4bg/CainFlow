@@ -150,11 +150,12 @@
 | 区域 | 主要文件 | 作用 |
 | --- | --- | --- |
 | 启动入口 | `index.js` | 前端真实入口与总装配层，负责模块初始化与依赖注入 |
-| 页面骨架 | `index.html` | 页面结构、面板容器、弹窗结构、脚本与样式入口 |
+| 页面骨架 | `index.html` | 页面结构、面板容器、弹窗结构、CSS 并行加载链（22 个 `<link>` 标签按 foundation → modules → layout → components → features → themes 顺序加载）、启动脚本 |
+| 应用上下文 | `js/app/create-app-context.js` | 创建装配期共享上下文；启动时判断本地是否已有 `nodeflow_ai_state`，在 `API_PROVIDERS_LOCKED` 开启且首次打开项目时阻止默认 6789 / GXP 供应商注入 |
 | 应用启动控制 | `js/features/app/startup-controller.js` | 应用初始化流程、模块装载编排；`loadState()` 后始终同步代理到后端 |
 | 共享常量 | `js/core/constants.js` | `APP_VERSION_NUMBER`、`APP_VERSION`、`APP_ASSET_VERSION`、GITHUB_REPO、STORAGE_KEY、DB_VERSION、默认供应商/默认模型，以及 `API_PROVIDERS_LOCKED` 这类前端共享策略常量 |
 | DOM 引用 | `js/core/elements.js` | 跨模块共用的顶层 DOM 元素查找 |
-| 全局状态 | `js/core/state.js` | 前端运行时共享状态与初始值 |
+| 全局状态 | `js/core/state.js` | 前端运行时共享状态与初始值；初始 providers/models 的默认注入与默认模型供应商绑定也在这里收口 |
 | 通用工具 | `js/core/common-utils.js` | 多模块共用的纯函数工具集 |
 
 ### Services（服务层）
@@ -245,7 +246,7 @@
 | --- | --- | --- |
 | 节点注册中心 | `js/nodes/registry.js` | 节点类型定义注册中心 |
 | 节点 DOM 绑定 | `js/nodes/node-dom-bindings.js` | 节点 DOM 事件绑定与输入监听、节点内控件值归一化；端口 `mousedown` 也在这里区分未连接输入口普通拖线和已连接输入口改线/断线；Text / TextSplit 节点编辑和右下角快速缩放时只同步数据与保存，不接入 textarea ResizeObserver shrink；Text 多文本切换与当前项编辑、可输入 textarea 的手动高度在这里通过 `textareaHeights` 记录并触发保存；TextSplit 节点在这里绑定“输出数量”步进控件、限制数字输入、处理 `0 = 自动生成端口`、处理“多合一输出”开关、动态重建输出端口、渲染可滚动节点内预览并清理失效连线；ImageMerge/TextMerge 的备用输入口同步和失效连线清理也在这里；TextChat 回复区滚动与复制按钮事件也在这里接入；ImageGenerate 等可扩展 textarea 只能在真实尺寸变化时触发 fit，点击/聚焦提示词框不得触发 shrink；运行中节点浮动取消按钮的 2 秒长按、拖动阈值取消长按、事件阻止冒泡也在这里绑定；节点内自定义下拉（用于画布缩放场景）也在这里绑定 |
-| 节点生命周期 | `js/nodes/node-lifecycle.js` | 节点创建、销毁、状态更新；旧 TextInput/TextDisplay 创建时映射为 Text；Text 节点尺寸测量、非文本内容显示不全兜底、Alt 删除保留上下游连接、拖拽晃动摘取节点后的连线保留逻辑在这里；TextSplit 预览区、TextChat 回复区和文本显示框这类可滚动长内容不得按完整内容 `scrollHeight` 撑高最小尺寸；节点类型的 `defaultHeight` 与 `minHeight` 在这里分开使用，支持默认较高但手动缩小到独立最小高度；删除、摘取、启用/禁用必须跳过运行中节点；启用/禁用后要刷新连线、端口状态与依赖预览 |
+| 节点生命周期 | `js/nodes/node-lifecycle.js` | 节点创建、销毁、状态更新；旧 TextInput/TextDisplay 在载入旧数据或创建时统一映射为 Text；Text 节点尺寸测量、非文本内容显示不全兜底、Alt 删除保留上下游连接、拖拽晃动摘取节点后的连线保留逻辑在这里；TextSplit 预览区、TextChat 回复区和文本显示框这类可滚动长内容不得按完整内容 `scrollHeight` 撑高最小尺寸；节点类型的 `defaultHeight` 与 `minHeight` 在这里分开使用，支持默认较高但手动缩小到独立最小高度；删除、摘取、启用/禁用必须跳过运行中节点；启用/禁用后要刷新连线、端口状态与依赖预览 |
 | 序列化 | `js/nodes/node-serializer.js` | 节点序列化、会话状态 payload、workflow 导出结构；workflow 导出只含画布、节点、连线和版本号；TextSplit 的 `delimiter` / `outputCount` / `removeEmptyLines` / `previewEnabled` / `mergeOutputEnabled` / `parts`、Text 的 `texts` / `textPreviewIndex`、ImageMerge/TextMerge 的 `inputCount` 以及输入框手动高度缓存 `textareaHeights` 也在这里保存 |
 | 节点视图工厂 | `js/nodes/node-view-factory.js` | 节点 HTML 模板生成，含 Text 文本框和多文本切换控件、TextSplit 分隔符、输出数量步进控件、删除空行、多合一输出与节点内预览控件、TextChat 回复框内部左上角小复制按钮、ImageGenerate 分辨率与生成次数控件、ImageCompare 高级对比入口按钮，以及运行中节点卡片外浮动取消按钮结构；TextSplit 不再渲染内部长文本输入框，输出数量为 `0` 时按分割结果自动生成端口并显示提示，开启 `mergeOutputEnabled` 时只生成单个 `text` 输出端口；ImageMerge/TextMerge 初始端口数量从 `inputCount` 恢复并遵守备用输入口；ImageGenerate 当前在节点内只显示 `xx/xx` 生成进度，不再显示结果预览；textarea 初始高度从 `textareaHeights` 恢复；节点端口区当前由顶部并排的 `.node-ports-row` 统一生成，输入/输出两列顶部对齐 |
 | 视角控制节点 | `js/nodes/types/camera-control.js` | CameraControl 节点定义、端口、默认尺寸与最小尺寸；固定结构节点不要把最小尺寸散落到私有逻辑里 |
@@ -261,8 +262,6 @@
 | 文本节点 | `js/nodes/types/text.js` | Text 节点正式定义，包含 1 个文本输入口和 1 个文本输出口 |
 | 多文本合一节点 | `js/nodes/types/text-merge.js` | TextMerge 节点定义，多个 `text_N` 输入按端口顺序展平成一个文本数组，由单个 `text` 输出口输出；输入端口遵守备用输入口规则 |
 | 文本分割节点 | `js/nodes/types/text-split.js` | TextSplit 节点定义，按自定义分隔字符串把上游文本切成多段；输出口数量可由 `outputCount` 固定控制，`0` 表示根据分割结果自动生成 `part_N` 端口；开启 `mergeOutputEnabled` 时收敛为单个 `text` 输出端口并输出多文本数组；可开启删除空行和节点内预览，预览区滚动展示且不锁定节点高度 |
-| 文本显示兼容节点 | `js/nodes/types/text-display.js` | TextDisplay 旧缓存/旧工作流兼容 shim，不在注册表中作为新节点注册 |
-| 文本输入兼容节点 | `js/nodes/types/text-input.js` | TextInput 旧缓存/旧工作流兼容 shim，不在注册表中作为新节点注册 |
 
 ---
 
@@ -295,8 +294,9 @@
 
 | 区域 | 主要文件 | 作用 |
 | --- | --- | --- |
-| 样式入口 | `index.css` | 分层样式入口，@import 各子目录 |
-| Layout | `css/layout/layout.css` | 应用整体布局与面板排布 |
+| 样式加载 | `index.html` 中的 `<link>` 标签 | 22 个 CSS 模块通过 `<link rel="stylesheet">` 并行加载，消除 `@import` 串行瀑布链；加载顺序：foundation → toolbar → buttons → canvas → node-core → node-media → node-text → node-controls → context-menu → toasts → fullscreen-preview → image-painter → settings-config → drawers-history-log → sidebar-notices-errors → workbench → nodes → dialog-style-1 → panels → settings → image-cropper → themes |
+| Workbench | `css/layout/workbench.css` | 应用整体布局、工具栏/侧边栏/画布/抽屉的交互态过渡、共享 token、悬浮通知与 toast 位置契约 |
+| Modules | `css/modules/*.css` | 按数字前缀排序的核心模块样式（00-foundation 到 14-sidebar-notices-errors），每个模块独立职责明确 |
 | Components | `css/components/nodes.css`, `css/components/dialog-style-1.css` | 可复用的节点与组件样式；图片对比节点、高级全屏对比、A/B 互斥裁切、缩略图选择网格、展开选图态、对比舞台缩放/平移光标，以及通用 `dialog-style-1` 弹窗样式 |
 | Features | `css/features/panels.css`, `css/features/settings.css`, `css/features/image-cropper.css` | 功能区或面板专属样式；`panels.css` 承接提示词库、提示词导入、全屏历史、历史预览等共享面板结构与 token 消费；设置面板新增交互放 `settings.css`；全屏图片裁剪相关布局和交互态放 `image-cropper.css` |
 | Themes | `css/themes.css`, `css/themes/shared.css`, `css/themes/*.css` | 主题入口、主题菜单共享层和单主题文件；当前包含 dark/light/pro/pink/glass-light/glass-dark，新增主题时同步 import、注册表和启动浅色判定 |
@@ -359,8 +359,8 @@
 | 修复节点删除、摘取节点、节点尺寸显示不全兜底 | `js/nodes/node-lifecycle.js`, `js/nodes/node-dom-bindings.js` |
 | 更新左侧工具栏“帮助”面板内容、快捷键说明或帮助字体 | `js/features/help/help-panel.js`, `index.html`, `css/legacy.css` |
 | 修改共享常量或默认值 | `js/core/constants.js`, `js/core/state.js` |
-| 修改默认 API 供应商或默认模型 | `js/core/constants.js`, `js/features/settings/settings-controller.js`, `js/features/execution/provider-request-utils.js` |
-| 新增或调整“锁定 API 供应商”能力 | `js/core/constants.js`, `js/features/settings/settings-controller.js`, `js/features/ui/ui-controller.js`, `js/features/persistence/project-io.js` |
+| 修改默认 API 供应商或默认模型 | `js/core/constants.js`, `js/core/state.js`, `js/app/create-app-context.js`, `js/features/settings/settings-controller.js`, `js/features/execution/provider-request-utils.js` |
+| 新增或调整“锁定 API 供应商”能力 | `js/core/constants.js`, `js/core/state.js`, `js/app/create-app-context.js`, `js/features/settings/settings-controller.js`, `js/features/ui/ui-controller.js`, `js/features/persistence/project-io.js` |
 | 修改连线类型 | `js/features/settings/settings-controller.js`, `js/core/state.js`, `js/canvas/connections.js`, `js/canvas/geometry.js`, `js/features/ui/ui-controller.js`, `js/features/persistence/project-io.js`, `js/nodes/node-serializer.js` |
 | 修改全局动画开关或禁用动画性能模式 | `js/features/settings/settings-controller.js`, `js/features/ui/animation-controller.js`, `js/core/state.js`, `js/canvas/connections.js`, `css/legacy.css`, `js/features/ui/ui-controller.js`, `js/features/persistence/project-io.js`, `js/nodes/node-serializer.js`, `index.html` |
 | 修改 DOM 获取或顶层元素引用 | `js/core/elements.js`, `index.html` |
@@ -422,7 +422,7 @@ grep -r "handle_get\|handle_post\|handle_delete\|def " backend --include="*.py"
 - API 设置帮助属于设置面板内的轻量弹窗能力：标题旁入口只在 `index.html` 放静态按钮，弹窗内容和事件由 `settings-controller.js` 渲染管理，关闭按钮、遮罩关闭和设置弹窗关闭时的清理都应在同一控制器中处理；样式集中到 `css/features/settings.css` 并补浅色主题覆盖。
 - 通用设置是设置面板里的独立视觉区域：卡片结构继续由 `js/features/settings/settings-controller.js` 渲染，布局和视觉收敛到 `css/features/settings.css`。优先使用统一 grid（例如 `general-settings-grid` / `general-settings-card`）和统一的滑动开关 `toggle-switch` / `toggle-slider`，不要在通用设置里继续堆内联布局、混用 checkbox 外观或把样式加回 `css/legacy.css`。
 - 并发请求模式属于通用设置中的“自动化与重试”能力，状态字段是 `concurrentRequestMode`，默认开启。该开关影响执行调度和 API 节点结果提交，新增或迁移时必须同步状态默认值、设置页 UI、导入导出、会话恢复、节点序列化和 `index.js` 依赖注入。
-- 供应商锁定属于“共享常量 + 设置页 + 持久化”的联合约束：`API_PROVIDERS_LOCKED` 放 `js/core/constants.js`，设置页按钮显隐和供应商 `endpoint` 只读在 `js/features/settings/settings-controller.js`，配置导入旁路保护在 `js/features/ui/ui-controller.js`，会话恢复旁路保护在 `js/features/persistence/project-io.js`。锁定后模型管理仍可用，但不能让导入配置或本地恢复替换默认供应商 URL。
+- 供应商锁定属于“共享常量 + 启动初始化 + 设置页 + 持久化”的联合约束：`API_PROVIDERS_LOCKED` 放 `js/core/constants.js`，首次打开项目时是否注入默认供应商由 `js/app/create-app-context.js` 与 `js/core/state.js` 决定，设置页按钮显隐和供应商 `endpoint` 只读在 `js/features/settings/settings-controller.js`，配置导入旁路保护在 `js/features/ui/ui-controller.js`，会话恢复旁路保护在 `js/features/persistence/project-io.js`。锁定后模型管理仍可用，但不能让导入配置或本地恢复替换默认供应商 URL；同时锁定开启且本地没有项目状态时，启动阶段也不应默认补出 6789 / GXP 供应商。
 - 代理安全策略的职责边界要固定：允许域名、内置默认放行域名、私网/本机阻断、`allowPrivateNetworkTargets` 逻辑都收在 `backend/services/security_service.py`；`backend/services/proxy_service.py` 只负责读取请求头并调用校验；前端安全开关与允许域名维护入口在 `js/features/settings/settings-controller.js`；统一中文错误提示在 `js/services/api-client.js`；更新检查如需复用这套提示，走 `js/features/update/update-manager.js`。
 - 项目内建功能依赖的官方域名也属于默认允许名单的一部分，而不只是第三方 API 供应商域名。当前更新检查依赖 `api.github.com` / `github.com`，调整 SSRF 默认策略时要把这些项目自用域名一起纳入考虑，避免误拦截。
 - 启动冲突提示需要同时照顾源码运行和打包运行：`start_cainflow.bat` 是源码双击入口，`backend/main.py` 是后端真实启动入口。端口占用时不要自动 `taskkill`，应识别占用进程并在黑色窗口中停留提示，区分 CainFlow 已运行和其他程序占用；测试冲突分支时可临时监听 `0.0.0.0:8767` 或模拟 CainFlow 命令行，结束后必须释放端口并清理临时缓存。
@@ -438,7 +438,7 @@ grep -r "handle_get\|handle_post\|handle_delete\|def " backend --include="*.py"
 - 媒体处理放 `js/features/media/`，不要堆回节点类型文件。
 - 图片类节点的定义、模板、DOM 绑定、媒体同步和执行输出要分层处理：`js/nodes/types/*.js` 只放元数据和端口；`js/nodes/node-view-factory.js` 只生成结构；`js/nodes/node-dom-bindings.js` 只接入节点事件；`js/features/media/media-controller.js` 负责图片显示状态、交互与依赖刷新；`js/features/execution/execution-core.js` 负责运行时输入校验、输出写入和向下游分发。
 - 节点端口位置先看 `js/nodes/node-view-factory.js` 与 `css/legacy.css`：当前输入/输出端口在顶部同一行并排展开，最上方端口需要左右对齐。`js/canvas/connections.js` 只负责按端口圆点实际 DOM 坐标取点，除非连线命中或路径本身有问题，不要为端口视觉位置改连线几何。
-- 文本节点统一使用 `Text`。`TextInput` / `TextDisplay` 只保留兼容 shim 和创建时映射，不要重新暴露为新建节点。Text 节点运行后不要自动设置大小；编辑文本时也不要自动缩放节点。若要改尺寸策略，先同时检查 `node-dom-bindings.js`、`node-lifecycle.js`、`execution-core.js` 和 `css/legacy.css`。
+- 文本节点统一使用 `Text`。`TextInput` / `TextDisplay` 只在载入旧工作流时迁移为 `Text`，不要重新暴露为新建节点或恢复运行态专用分支。Text 节点运行后不要自动设置大小；编辑文本时也不要自动缩放节点。若要改尺寸策略，先同时检查 `node-dom-bindings.js`、`node-lifecycle.js`、`execution-core.js` 和 `css/legacy.css`。
 - 文本输入框的手动高度持久化统一走 `textareaHeights`：节点模板恢复、输入监听后的保存、工作流序列化和复制粘贴都要同步更新；`ResizeObserver` 只记录高度变化并触发保存，不负责 shrink fit。
 - ImageGenerate / TextChat / Text 等带 textarea 的节点若出现“点击输入框后节点变小”，优先检查 `js/nodes/node-dom-bindings.js` 里的可扩展元素尺寸监听。只允许 `ResizeObserver` 等真实尺寸变化触发 fit，不要把 `mouseup`、`touchend`、focus/click 这类交互事件接到 shrink fit。
 - TextSplit 输出数量控件是节点内步进控件：左右按钮增减，中间输入框只能输入数字；`outputCount > 0` 时固定生成对应数量 `part_N` 端口，`outputCount = 0` 时按分割结果自动生成 `part_N` 端口。开启“多合一输出”时保存 `mergeOutputEnabled`，端口收敛为单个 `text` 输出口，输出值是分割片段组成的多文本数组，并应通过 `node.data.texts` / `getCachedOutputValue(node, 'text')` 向下游传递。保存、复制、恢复和运行都要保留 `outputCount` 与 `mergeOutputEnabled`，旧工作流缺少这些字段时应从 `parts` 或分割结果推导普通端口数量，避免已有 `part_N` 连线失效。
@@ -478,3 +478,24 @@ grep -r "handle_get\|handle_post\|handle_delete\|def " backend --include="*.py"
 - 优先使用分层后的 `css/` 目录，不要继续扩张 `index.css` 或 `css/legacy.css`。设置面板专属新增样式放 `css/features/settings.css`，只在 `index.css` 中接入入口。
 - 主题相关改动优先落在 `css/themes/*` 与 `js/features/ui/theme-controller.js`。如果主题变更影响面板、节点、弹窗、菜单或预览区的视觉，必须同步补对应主题文件里的覆盖，而不是只改基础样式后假设所有区域都会自动正确继承。
 - 保留当前启动流程中已经对外暴露的兼容钩子。
+
+
+## 代码质量与性能优化
+
+### CSS 加载优化
+
+- **并行加载替代串行 `@import`**：所有 CSS 模块通过 `index.html` 中的独立 `<link rel="stylesheet">` 标签加载，消除 `@import` 导致的瀑布链延迟。浏览器可同时发起所有 CSS 请求，显著降低首屏渲染时间。
+- **加载顺序**：foundation → toolbar → buttons → canvas → node-core → node-media → node-text → node-controls → context-menu → toasts → fullscreen-preview → image-painter → settings-config → drawers-history-log → sidebar-notices-errors → workbench → nodes → dialog-style-1 → panels → settings → image-cropper → themes。这个顺序保证基础样式先加载，避免 FOUC（无样式内容闪烁）。
+- **新增 CSS 模块**：在 `css/modules/`、`css/features/` 或 `css/components/` 下新增模块后，必须同步在 `index.html` 中添加对应的 `<link>` 标签，并按职责插入正确位置。
+- **移除空文件**：已删除空的 `css/layout/layout.css`（仅含注释），相关职责已合并到 `css/layout/workbench.css`。
+
+### ID 生成优化
+
+- **`generateId()` 升级**：从 `Math.random().toString(36)` 改为 `crypto.getRandomValues(new Uint8Array(7))`，保持 `n_` 前缀和 9 字符长度格式，但提供密码学级别的唯一性保证，消除碰撞隐患。
+- **使用场景**：节点 ID、连接 ID、工作流内部标识等需要唯一性的场景。升级后向后兼容，现有 ID 格式不受影响。
+
+### 性能最佳实践
+
+- **HTTP/2 并行请求**：现代浏览器在 HTTP/2 下可并行请求多个资源，22 个 CSS 文件通过 `<link>` 并行加载比串行 `@import` 快数倍。
+- **避免 `@import` 嵌套**：`@import` 必须等待父文件下载并解析后才能发起子文件请求，形成串行瀑布链。`<link>` 标签在 HTML 解析时立即可见，浏览器可同时发起所有请求。
+- **缓存策略**：CSS 文件使用 `Cache-Control: public, max-age=0, must-revalidate`，确保每次访问都验证新鲜度，但允许缓存复用。后续可考虑引入 content hash 做长缓存优化。

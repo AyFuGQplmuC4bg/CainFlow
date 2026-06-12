@@ -47,6 +47,10 @@ export function createNodeDomBindingsApi({
     enforceNodeContentMinimum = () => null,
     getNodeMinimumSizeFromLifecycle = null,
     updateAllConnections = () => {},
+    updateDirtyConnections = null,
+    scheduleConnectionRefresh = null,
+    invalidateNodePortCache = null,
+    markNodeConnectionsDirty = null,
     updatePortStyles = () => {},
     onConnectionsChanged = () => {},
     documentRef = document
@@ -102,19 +106,72 @@ export function createNodeDomBindingsApi({
         return false;
     }
 
+    function refreshNodePortGeometry(nodeId, { force = false } = {}) {
+        if (typeof scheduleConnectionRefresh === 'function') {
+            scheduleConnectionRefresh({
+                nodeIds: nodeId,
+                force,
+                immediate: force,
+                reason: 'node-port-geometry'
+            });
+            return;
+        }
+        if (typeof invalidateNodePortCache === 'function') {
+            invalidateNodePortCache(nodeId);
+        } else if (typeof markNodeConnectionsDirty === 'function') {
+            markNodeConnectionsDirty(nodeId);
+        }
+        if (!force && typeof updateDirtyConnections === 'function') {
+            updateDirtyConnections();
+            return;
+        }
+        updateAllConnections();
+    }
+
+    function refreshNodesPortGeometry(nodeIds = [], { force = false } = {}) {
+        const ids = Array.from(new Set((Array.isArray(nodeIds) ? nodeIds : [nodeIds]).filter(Boolean)));
+        if (typeof scheduleConnectionRefresh === 'function') {
+            scheduleConnectionRefresh({
+                nodeIds: ids,
+                force,
+                immediate: force,
+                reason: 'nodes-port-geometry'
+            });
+            return;
+        }
+        ids.forEach((nodeId) => {
+            if (typeof invalidateNodePortCache === 'function') {
+                invalidateNodePortCache(nodeId);
+            } else if (typeof markNodeConnectionsDirty === 'function') {
+                markNodeConnectionsDirty(nodeId);
+            }
+        });
+        if (!force && typeof updateDirtyConnections === 'function') {
+            updateDirtyConnections();
+            return;
+        }
+        updateAllConnections();
+    }
+
     function syncCollapsedUnusedPorts(nodeId) {
         const node = state.nodes.get(nodeId);
         const ports = node?.el?.querySelectorAll?.('.node-port');
         if (!ports?.length) return;
 
         const isCollapsed = node.collapsed === true || node.el.classList.contains('collapsed');
+        let changed = false;
         ports.forEach((portEl) => {
             const direction = portEl.dataset.direction || '';
             const portName = portEl.dataset.port || '';
             const shouldHideForCollapse = direction === 'input' && isCollapsed && !hasPortConnection(nodeId, portName, direction);
+            if (portEl.classList.contains('is-hidden-by-collapse') !== shouldHideForCollapse) changed = true;
             portEl.classList.toggle('is-hidden-by-collapse', shouldHideForCollapse);
             portEl.setAttribute('aria-hidden', shouldHideForCollapse ? 'true' : 'false');
         });
+        if (changed) {
+            if (typeof invalidateNodePortCache === 'function') invalidateNodePortCache(nodeId);
+            else if (typeof markNodeConnectionsDirty === 'function') markNodeConnectionsDirty(nodeId);
+        }
     }
 
     function syncAllCollapsedUnusedPorts() {
@@ -153,7 +210,14 @@ export function createNodeDomBindingsApi({
                 preserveCurrentWidth: true,
                 reason: 'element-resize'
             });
-            updateAllConnections();
+            if (typeof scheduleConnectionRefresh === 'function') {
+                scheduleConnectionRefresh({
+                    nodeIds: nodeId,
+                    reason: 'connected-input-field-layout'
+                });
+            } else {
+                updateAllConnections();
+            }
         });
         pendingConnectedInputLayoutFrames.set(nodeId, frameId);
     }
@@ -948,7 +1012,7 @@ export function createNodeDomBindingsApi({
         ));
         const removedConnections = beforeConnectionCount !== state.connections.length;
         syncCollapsedUnusedPorts(nodeId);
-        updateAllConnections();
+        refreshNodePortGeometry(nodeId, { force: removedConnections });
         updatePortStyles();
         if (removedConnections) onConnectionsChanged();
         scheduleSave();
@@ -1006,7 +1070,7 @@ export function createNodeDomBindingsApi({
         ));
         const removedConnections = beforeConnectionCount !== state.connections.length;
         syncCollapsedUnusedPorts(nodeId);
-        updateAllConnections();
+        refreshNodePortGeometry(nodeId, { force: removedConnections });
         updatePortStyles();
         if (removedConnections) onConnectionsChanged();
         scheduleSave();
@@ -1048,7 +1112,7 @@ export function createNodeDomBindingsApi({
         ));
         const removedConnections = beforeConnectionCount !== state.connections.length;
         syncCollapsedUnusedPorts(nodeId);
-        updateAllConnections();
+        refreshNodePortGeometry(nodeId, { force: removedConnections });
         updatePortStyles();
         if (removedConnections) onConnectionsChanged();
         scheduleSave();
@@ -1139,13 +1203,13 @@ export function createNodeDomBindingsApi({
 
         if (changedIds.length === 0) return;
 
-        updateAllConnections();
+        refreshNodesPortGeometry(changedIds);
         updatePortStyles();
         const requestFrame = documentRef.defaultView?.requestAnimationFrame;
         if (typeof requestFrame === 'function') {
             requestFrame(() => {
                 changedIds.forEach((nodeId) => syncCollapsedUnusedPorts(nodeId));
-                updateAllConnections();
+                refreshNodesPortGeometry(changedIds);
                 updatePortStyles();
             });
         }
@@ -1461,6 +1525,7 @@ export function createNodeDomBindingsApi({
         if (!element || typeof ResizeObserver === 'undefined') return;
         const node = state.nodes.get(nodeId);
         if (node?.type === 'Text') return;
+        if (element.classList?.contains('chat-response-area')) return;
 
         let frameId = null;
         const scheduleFit = () => {
@@ -1664,8 +1729,8 @@ export function createNodeDomBindingsApi({
     function getResizeTargetBaseMetrics(el) {
         const style = getComputedStyle(el);
         const minHeight = getPx(style, 'min-height');
-        const measuredHeight = el.getBoundingClientRect?.().height ||
-            el.offsetHeight ||
+        const measuredHeight = el.offsetHeight ||
+            el.getBoundingClientRect?.().height ||
             parseFloat(el.style.height || '0') ||
             minHeight;
         return {
@@ -1678,19 +1743,44 @@ export function createNodeDomBindingsApi({
     function collectNodeTextareaResizeTargets(el) {
         const body = el?.querySelector?.('.node-body');
         if (!body) return [];
+        const isChatNode = el.classList.contains('node-chat');
         const textareaTargets = Array.from(body.querySelectorAll('textarea'))
             .filter(isVisibleElement)
             .filter((textarea) => !textarea.classList.contains('text-split-delimiter'))
+            .filter((textarea) => {
+                if (!isChatNode) return true;
+                return textarea.closest('.node-chat-prompt-field') || textarea.id.endsWith('-prompt');
+            })
             .map((textarea) => {
-                const { minHeight, startHeight } = getResizeTargetBaseMetrics(textarea);
+                const { style, minHeight, startHeight } = getResizeTargetBaseMetrics(textarea);
+                const borderY = getPx(style, 'border-top-width') + getPx(style, 'border-bottom-width');
+                const contentHeight = Math.max(minHeight, (textarea.scrollHeight || startHeight) + borderY);
                 return {
                     el: textarea,
                     startHeight,
                     minHeight,
+                    contentHeight,
                     weight: Math.max(1, startHeight)
                 };
             })
             .filter((target) => target.startHeight > 0);
+
+        const chatResponseTargets = isChatNode
+            ? Array.from(body.querySelectorAll('.chat-response-area'))
+                .filter(isVisibleElement)
+                .map((responseArea) => {
+                    const { minHeight, startHeight } = getResizeTargetBaseMetrics(responseArea);
+                    return {
+                        el: responseArea,
+                        startHeight,
+                        minHeight,
+                        // Chat responses should only resize with the node, not expand to reveal all content.
+                        contentHeight: startHeight,
+                        weight: Math.max(1, startHeight)
+                    };
+                })
+                .filter((target) => target.startHeight > 0)
+            : [];
 
         const textSplitPreviewTargets = Array.from(body.querySelectorAll('.text-split-preview-text'))
             .filter(isVisibleElement)
@@ -1703,12 +1793,13 @@ export function createNodeDomBindingsApi({
                     el: previewText,
                     startHeight,
                     minHeight,
+                    contentHeight,
                     weight: Math.max(1, growthCapacity)
                 };
             })
             .filter((target) => target.startHeight > 0);
 
-        return textareaTargets.concat(textSplitPreviewTargets);
+        return textareaTargets.concat(chatResponseTargets, textSplitPreviewTargets);
     }
 
     function getResizeTargetsMaxNodeHeight(startHeight, targets) {
@@ -1722,6 +1813,17 @@ export function createNodeDomBindingsApi({
             extraHeight += Math.max(0, maxHeight - startTargetHeight);
         }
         return Math.max(0, Number(startHeight) || 0) + extraHeight;
+    }
+
+    function getResizeTargetsMinNodeHeight(startHeight, targets) {
+        if (!Array.isArray(targets) || !targets.length) return Math.max(0, Number(startHeight) || 0);
+        let shrinkCapacity = 0;
+        for (const target of targets) {
+            const minHeight = Math.max(0, Number(target?.minHeight) || 0);
+            const startTargetHeight = Math.max(minHeight, Number(target?.startHeight) || minHeight);
+            shrinkCapacity += Math.max(0, startTargetHeight - minHeight);
+        }
+        return Math.max(0, (Number(startHeight) || 0) - shrinkCapacity);
     }
 
     function measureTextWidth(text, font) {
@@ -1813,7 +1915,13 @@ export function createNodeDomBindingsApi({
         const marginY = getOuterExtras(style, 'y');
 
         if (el.classList.contains('chat-response-wrapper') || el.classList.contains('chat-response-area')) {
-            return Math.ceil(minHeight + marginY);
+            const explicitHeightValue = String(el.style?.height || '');
+            const explicitHeight = /px$/i.test(explicitHeightValue) ? parseFloat(explicitHeightValue) : NaN;
+            const computedHeight = parseFloat(style.height || '0');
+            const fixedHeight = Number.isFinite(explicitHeight) && explicitHeight > 0
+                ? explicitHeight
+                : (Number.isFinite(computedHeight) && computedHeight > 0 ? computedHeight : minHeight);
+            return Math.ceil(Math.max(minHeight, fixedHeight) + marginY);
         }
 
         if (isResizableMediaElement(el)) {
@@ -1882,6 +1990,55 @@ export function createNodeDomBindingsApi({
     }
 
     function bindNodeInteractions({ id, type, el }) {
+        const createNodeDraggingState = (nodeIds, pos, isCloneDrag) => {
+            const startPositions = new Map();
+            const draggedNodeIds = new Set(nodeIds);
+
+            nodeIds.forEach((nid) => {
+                const node = state.nodes.get(nid);
+                if (node) {
+                    startPositions.set(nid, { x: node.x, y: node.y });
+                }
+            });
+
+            const portOffsets = new Map();
+            const connectionsToUpdate = [];
+            const {
+                internalConnections,
+                externalConnections
+            } = collectConnectionSnapshotsForNodes(state, nodeIds);
+
+            for (const conn of state.connections) {
+                const isFromDragged = draggedNodeIds.has(conn.from.nodeId);
+                const isToDragged = draggedNodeIds.has(conn.to.nodeId);
+                if (isFromDragged || isToDragged) {
+                    const pathEl = connectionsGroup.querySelector(`path[data-conn-id="${conn.id}"]`);
+                    connectionsToUpdate.push({ conn, pathEl });
+                    [{ p: conn.from, d: 'output' }, { p: conn.to, d: 'input' }].forEach((item) => {
+                        const key = `${item.p.nodeId}-${item.p.port}-${item.d}`;
+                        if (!portOffsets.has(key)) {
+                            const portPos = getPortPosition(item.p.nodeId, item.p.port, item.d);
+                            const node = state.nodes.get(item.p.nodeId);
+                            if (node) portOffsets.set(key, { dx: portPos.x - node.x, dy: portPos.y - node.y });
+                        }
+                    });
+                }
+            }
+
+            return {
+                nodes: nodeIds,
+                startX: pos.x,
+                startY: pos.y,
+                startPositions,
+                portOffsets,
+                connectionsToUpdate,
+                isCloneDrag,
+                cloned: false,
+                internalConnections,
+                externalConnections
+            };
+        };
+
         const stopBatchConnectionFollowupClick = (event) => {
             if (!state.batchConnectionMode?.sourceNodeId) return;
             event.preventDefault();
@@ -1904,7 +2061,9 @@ export function createNodeDomBindingsApi({
             if (target.closest('.node-delete, .node-bypass-btn')) return;
 
             const interactiveSelector = 'input, textarea, select, button, label, .toggle-switch, .toggle-slider, .node-select, .port, .node-resize-handle, [contenteditable="true"], .chat-response-area, .preview-controls, .workflow-action-btn';
+            const mediaSurfaceSelector = '.preview-container, .save-preview-container, .file-drop-zone, .image-compare-container';
             const isInteractive = target.closest(interactiveSelector);
+            const mediaSurface = target.closest(mediaSurfaceSelector);
 
             const dragAreaSelector = '.node-header, .node-glass-bg';
             const isForceDrag = target.matches(dragAreaSelector) || (target.parentElement && target.parentElement.matches(dragAreaSelector));
@@ -1926,10 +2085,19 @@ export function createNodeDomBindingsApi({
             }
 
             const pos = viewportApi.screenToCanvas(e.clientX, e.clientY);
-            const isMulti = isCloneDrag;
+            if (mediaSurface && !state.selectedNodes.has(id)) {
+                state.dragging = createNodeDraggingState([id], pos, isCloneDrag);
+                state.dragging.deferSelectionOnDrag = true;
+                state.dragging.activateSelection = () => {
+                    selectNode(id, false);
+                    if (state.dragging) state.dragging.selectionActivated = true;
+                    pushHistory();
+                };
+                return;
+            }
 
             if (!state.selectedNodes.has(id)) {
-                selectNode(id, isMulti);
+                selectNode(id, isCloneDrag);
             }
 
             const nodesToDrag = Array.from(state.selectedNodes);
@@ -1937,54 +2105,7 @@ export function createNodeDomBindingsApi({
                 showToast('选区中有节点正在运行，暂不能移动', 'warning');
                 return;
             }
-            const startPositions = new Map();
-            const draggedNodeIds = new Set(nodesToDrag);
-
-            nodesToDrag.forEach((nid) => {
-                const node = state.nodes.get(nid);
-                if (node) {
-                    startPositions.set(nid, { x: node.x, y: node.y });
-                }
-            });
-
-            const portOffsets = new Map();
-            const connectionsToUpdate = [];
-            const {
-                internalConnections,
-                externalConnections
-            } = collectConnectionSnapshotsForNodes(state, nodesToDrag);
-
-            for (const conn of state.connections) {
-                const isFromDragged = draggedNodeIds.has(conn.from.nodeId);
-                const isToDragged = draggedNodeIds.has(conn.to.nodeId);
-                if (isFromDragged || isToDragged) {
-                    const pathEl = connectionsGroup.querySelector(`path[data-conn-id="${conn.id}"]`);
-                    if (pathEl) {
-                        connectionsToUpdate.push({ conn, pathEl });
-                        [{ p: conn.from, d: 'output' }, { p: conn.to, d: 'input' }].forEach((item) => {
-                            const key = `${item.p.nodeId}-${item.p.port}-${item.d}`;
-                            if (!portOffsets.has(key)) {
-                                const pos = getPortPosition(item.p.nodeId, item.p.port, item.d);
-                                const node = state.nodes.get(item.p.nodeId);
-                                if (node) portOffsets.set(key, { dx: pos.x - node.x, dy: pos.y - node.y });
-                            }
-                        });
-                    }
-                }
-            }
-
-            state.dragging = {
-                nodes: nodesToDrag,
-                startX: pos.x,
-                startY: pos.y,
-                startPositions,
-                portOffsets,
-                connectionsToUpdate,
-                isCloneDrag: e.ctrlKey || e.metaKey,
-                cloned: false,
-                internalConnections,
-                externalConnections
-            };
+            state.dragging = createNodeDraggingState(nodesToDrag, pos, isCloneDrag);
 
             pushHistory();
         });
@@ -2039,6 +2160,7 @@ export function createNodeDomBindingsApi({
             const currentHeight = el.offsetHeight || Number(node?.height) || defaultMinimum.minHeight;
 
             const textareaResizeTargets = collectNodeTextareaResizeTargets(el);
+            const resizeTargetMinHeight = getResizeTargetsMinNodeHeight(currentHeight, textareaResizeTargets);
             const resizeTargetMaxHeight = getResizeTargetsMaxNodeHeight(currentHeight, textareaResizeTargets);
             const configuredMaxHeight = Number(node?.maxHeight);
             const maxHeight = Number.isFinite(configuredMaxHeight) && configuredMaxHeight > 0
@@ -2052,7 +2174,7 @@ export function createNodeDomBindingsApi({
                 startWidth: currentWidth,
                 startHeight: currentHeight,
                 minWidth: defaultMinimum.minWidth,
-                minHeight: defaultMinimum.minHeight,
+                minHeight: Math.max(60, Math.min(defaultMinimum.minHeight, resizeTargetMinHeight)),
                 maxHeight,
                 textareaResizeTargets
             };
@@ -2331,7 +2453,147 @@ export function createNodeDomBindingsApi({
                     if (valueInput) valueInput.id = `${id}-param-value-${index}`;
                 });
             };
+            const refreshCustomParamsPorts = () => {
+                const node = state.nodes.get(id);
+                if (!node) return;
+                const rows = Array.from(list?.querySelectorAll('[data-param-row]') || []);
+
+                // 保存旧的参数列表（包括空的），用于检测重命名
+                const oldParams = (node.data?.params || []).slice();
+
+                const params = rows
+                    .map((row) => {
+                        const key = row.querySelector('.custom-param-key')?.value?.trim() || '';
+                        const value = row.querySelector('.custom-param-value')?.value || '';
+                        return { key, value };
+                    })
+                    .filter((row) => row.key);
+
+                node.data = node.data || {};
+                node.data.params = params;
+
+                const inputs = params.map((row) => ({
+                    name: `param_${row.key}`,
+                    type: 'any',
+                    label: row.key
+                }));
+
+                // 尝试通过索引匹配来更新连接中的端口名（处理重命名情况）
+                const portRenameMap = new Map(); // oldPortName -> newPortName
+                params.forEach((newParam, index) => {
+                    if (index < oldParams.length && oldParams[index].key) {
+                        const oldPortName = `param_${oldParams[index].key}`;
+                        const newPortName = `param_${newParam.key}`;
+                        if (oldPortName !== newPortName) {
+                            portRenameMap.set(oldPortName, newPortName);
+                        }
+                    }
+                });
+
+                // 更新连接中的端口名
+                if (portRenameMap.size > 0) {
+                    let updated = false;
+                    state.connections.forEach((conn) => {
+                        if (conn.to.nodeId === id && portRenameMap.has(conn.to.port)) {
+                            conn.to.port = portRenameMap.get(conn.to.port);
+                            updated = true;
+                        }
+                    });
+                    if (updated) {
+                        console.log(`[CustomParams] Updated ${portRenameMap.size} port names in connections`);
+                    }
+                }
+
+                // 检测被完全删除的端口（不在新参数列表中的旧参数）
+                const newPortNames = new Set(inputs.map(p => p.name));
+                const removedPorts = oldParams
+                    .filter(p => p.key)
+                    .map(p => `param_${p.key}`)
+                    .filter(name => !newPortNames.has(name) && !Array.from(portRenameMap.keys()).includes(name));
+
+                if (removedPorts.length > 0) {
+                    const before = state.connections.length;
+                    state.connections = state.connections.filter((conn) => {
+                        if (conn.to.nodeId === id && removedPorts.includes(conn.to.port)) {
+                            return false;
+                        }
+                        return true;
+                    });
+                    if (state.connections.length !== before) {
+                        console.log(`[CustomParams] Removed ${before - state.connections.length} connections for deleted ports`);
+                    }
+                }
+
+                const portsRow = node.el?.querySelector('.node-ports-row');
+                if (!portsRow) return;
+
+                // 查找或创建 inputs section
+                let inputsSection = portsRow.querySelector('.node-inputs-section');
+                if (!inputsSection && inputs.length > 0) {
+                    inputsSection = documentRef.createElement('div');
+                    inputsSection.className = 'node-inputs-section';
+                    // 插入到 outputs section 之前
+                    const outputsSection = portsRow.querySelector('.node-outputs-section');
+                    if (outputsSection) {
+                        portsRow.insertBefore(inputsSection, outputsSection);
+                    } else {
+                        portsRow.appendChild(inputsSection);
+                    }
+                }
+
+                if (inputsSection) {
+                    inputsSection.innerHTML = inputs.map((port) => `
+                        <div class="node-port input" data-node-id="${id}" data-port="${port.name}" data-type="${port.type}" data-direction="input">
+                            <div class="port-dot type-${port.type}"></div>
+                            <span class="port-label">${port.label}</span>
+                        </div>
+                    `).join('');
+
+                    // 为新创建的端口绑定交互事件
+                    inputsSection.querySelectorAll('.node-port').forEach((portEl) => {
+                        bindPortInteraction(portEl);
+                    });
+
+                    // 如果没有端口了，删除 section
+                    if (inputs.length === 0) {
+                        inputsSection.remove();
+                    }
+                }
+
+                if (inputs.length > 0) {
+                    portsRow.classList.add('has-inputs');
+                    portsRow.classList.add('has-outputs');
+                } else {
+                    portsRow.classList.remove('has-inputs');
+                    portsRow.classList.add('has-outputs-only');
+                }
+
+                // 清除端口缓存，这样连接系统会重新读取端口
+                if (node._portPositionCache) {
+                    delete node._portPositionCache;
+                }
+
+                // 强制刷新端口几何位置和连接
+                if (typeof invalidateNodePortCache === 'function') {
+                    invalidateNodePortCache(id);
+                }
+                refreshNodesPortGeometry([id], { force: true });
+                updatePortStyles();
+                onConnectionsChanged();
+                scheduleSave();
+            };
             const bindRow = (row) => {
+                const keyInput = row.querySelector('.custom-param-key');
+                const valueInput = row.querySelector('.custom-param-value');
+                keyInput?.addEventListener('input', debounce(() => {
+                    refreshCustomParamsPorts();
+                }, 300));
+                keyInput?.addEventListener('change', () => {
+                    refreshCustomParamsPorts();
+                });
+                valueInput?.addEventListener('change', () => {
+                    scheduleSave();
+                });
                 row.querySelector('.custom-param-remove')?.addEventListener('click', () => {
                     if (!list) return;
                     const rows = list.querySelectorAll('[data-param-row]');
@@ -2342,6 +2604,7 @@ export function createNodeDomBindingsApi({
                         row.remove();
                     }
                     renumberRows();
+                    refreshCustomParamsPorts();
                     fitNodeToContent(id);
                 });
             };
