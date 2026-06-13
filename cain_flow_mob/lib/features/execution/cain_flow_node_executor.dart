@@ -6,6 +6,7 @@ import '../../core/network/provider_client.dart';
 import '../logs/log_signals.dart';
 import '../media/media_asset.dart';
 import '../settings/provider_settings.dart';
+import 'async_image_protocol.dart';
 import 'execution_services.dart';
 import 'node_executor.dart';
 import 'provider_request_builder.dart';
@@ -118,6 +119,17 @@ class CainFlowNodeExecutor implements NodeExecutor {
     final provider = _resolveProvider(node: node, settings: settings, model: model);
     final prompt = _resolvePrompt(node: node, inputs: context.inputs);
 
+    if (model.protocol == ModelProtocol.newApiImageAsync) {
+      return _executeAsyncImageGenerate(
+        node: node,
+        context: context,
+        settings: settings,
+        model: model,
+        provider: provider,
+        prompt: prompt,
+      );
+    }
+
     final request = ProviderRequestBuilder.buildImageRequest(
       provider: provider,
       model: model,
@@ -135,6 +147,100 @@ class CainFlowNodeExecutor implements NodeExecutor {
       fileNameSeed: node.id,
     );
     return NodeExecutionResult(nodeId: node.id, outputs: {'image': image});
+  }
+
+  /// Async image flow: submit a task, poll until completed/failed/timeout
+  /// (honoring cancellation), then resolve the result URL into an output.
+  Future<NodeExecutionResult> _executeAsyncImageGenerate({
+    required FlowNode node,
+    required NodeExecutionContext context,
+    required ProviderSettings settings,
+    required ModelConfig model,
+    required ProviderConfig provider,
+    required String prompt,
+  }) async {
+    final submit = AsyncImageProtocol.buildSubmitRequest(
+      provider: provider,
+      model: model,
+      prompt: prompt,
+      size: _stringFrom(node.data['size']) ?? '',
+      customParams: _customParamsFrom(node.data['customParams']),
+    );
+    final submitResponse =
+        await _send(node: node, request: submit, scope: 'ImageGenerate(async)');
+    final submitJson = _tryDecode(submitResponse.body);
+    if (submitJson == null) {
+      throw StateError('Async submit response was not valid JSON');
+    }
+    final taskId = AsyncImageProtocol.extractTaskId(submitJson);
+    if (taskId.isEmpty) {
+      throw StateError('Async submit did not return a task id');
+    }
+    services.logs.add(
+      LogLevel.info,
+      'Async image task submitted: $taskId',
+      scope: 'ImageGenerate(async)',
+    );
+
+    final interval =
+        Duration(seconds: settings.runtime.asyncPollIntervalSeconds.clamp(1, 60));
+    final deadline = DateTime.now().add(
+      Duration(seconds: settings.runtime.asyncTimeoutSeconds.clamp(5, 3600)),
+    );
+
+    var attempt = 0;
+    while (true) {
+      if (context.isCanceled()) {
+        throw StateError('Async image task canceled');
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        throw StateError('Async image task timed out after $taskId');
+      }
+      await Future<void>.delayed(interval);
+      if (context.isCanceled()) {
+        throw StateError('Async image task canceled');
+      }
+
+      attempt += 1;
+      final poll = AsyncImageProtocol.buildPollRequest(
+        provider: provider,
+        taskId: taskId,
+      );
+      final pollResponse = await services.providerClient.send(poll);
+      if (!pollResponse.isSuccess) {
+        // Transient poll failure: log and keep trying until the deadline.
+        services.logs.add(
+          LogLevel.warning,
+          'Async poll #$attempt failed (${pollResponse.statusCode}), retrying',
+          scope: 'ImageGenerate(async)',
+        );
+        continue;
+      }
+      final pollJson = _tryDecode(pollResponse.body);
+      if (pollJson == null) continue;
+
+      final status = AsyncImageProtocol.extractStatus(pollJson);
+      services.logs.add(
+        LogLevel.info,
+        'Async poll #$attempt: ${status.name}',
+        scope: 'ImageGenerate(async)',
+      );
+      if (status == AsyncImageStatus.failed) {
+        throw StateError('Async image task failed: $taskId');
+      }
+      if (status == AsyncImageStatus.completed) {
+        final url = AsyncImageProtocol.extractResultUrl(pollJson);
+        if (url.isEmpty) {
+          throw StateError('Async image completed without a result URL');
+        }
+        return NodeExecutionResult(
+          nodeId: node.id,
+          outputs: {
+            'image': {'kind': 'url', 'url': url},
+          },
+        );
+      }
+    }
   }
 
   Future<NodeExecutionResult> _executeImageSave(
@@ -235,7 +341,8 @@ class CainFlowNodeExecutor implements NodeExecutor {
     final decoded = _tryDecode(body);
     if (decoded == null) return body;
     return switch (protocol) {
-      ModelProtocol.openai => _openAiChatText(decoded) ?? '',
+      ModelProtocol.openai || ModelProtocol.newApiImageAsync =>
+        _openAiChatText(decoded) ?? '',
       ModelProtocol.google => _googleText(decoded) ?? '',
     };
   }

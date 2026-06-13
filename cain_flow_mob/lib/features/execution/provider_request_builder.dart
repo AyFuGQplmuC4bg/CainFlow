@@ -38,13 +38,15 @@ abstract final class ProviderRequestBuilder {
         systemPrompt: systemPrompt,
         customParams: customParams,
       ),
-      ModelProtocol.openai => _buildOpenAiChatRequest(
-        provider: provider,
-        model: model,
-        prompt: prompt,
-        systemPrompt: systemPrompt,
-        customParams: customParams,
-      ),
+      // Async-image providers have no chat path; use the OpenAI-compatible shape.
+      ModelProtocol.openai || ModelProtocol.newApiImageAsync =>
+        _buildOpenAiChatRequest(
+          provider: provider,
+          model: model,
+          prompt: prompt,
+          systemPrompt: systemPrompt,
+          customParams: customParams,
+        ),
     };
   }
 
@@ -63,14 +65,15 @@ abstract final class ProviderRequestBuilder {
         prompt: prompt,
         customParams: customParams,
       ),
-      ModelProtocol.openai => _buildOpenAiImageRequest(
-        provider: provider,
-        model: model,
-        prompt: prompt,
-        size: size,
-        quality: quality,
-        customParams: customParams,
-      ),
+      ModelProtocol.openai || ModelProtocol.newApiImageAsync =>
+        _buildOpenAiImageRequest(
+          provider: provider,
+          model: model,
+          prompt: prompt,
+          size: size,
+          quality: quality,
+          customParams: customParams,
+        ),
     };
   }
 }

@@ -199,6 +199,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                key: const Key('runtime-async-poll-field'),
+                initialValue: runtime.asyncPollIntervalSeconds.toString(),
+                decoration: const InputDecoration(
+                  labelText: 'Async poll (seconds)',
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (value) {
+                  final parsed = int.tryParse(value.trim());
+                  if (parsed == null) return;
+                  _persist(
+                    _settings.copyWith(
+                      runtime:
+                          runtime.copyWith(asyncPollIntervalSeconds: parsed),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextFormField(
+                key: const Key('runtime-async-timeout-field'),
+                initialValue: runtime.asyncTimeoutSeconds.toString(),
+                decoration: const InputDecoration(
+                  labelText: 'Async timeout (seconds)',
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (value) {
+                  final parsed = int.tryParse(value.trim());
+                  if (parsed == null) return;
+                  _persist(
+                    _settings.copyWith(
+                      runtime: runtime.copyWith(asyncTimeoutSeconds: parsed),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         _buildActiveModelDropdown(
           label: 'Active chat model',
           taskType: ModelTaskType.chat,
@@ -599,6 +644,10 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
                   value: ModelProtocol.google,
                   child: Text('google'),
                 ),
+                DropdownMenuItem(
+                  value: ModelProtocol.newApiImageAsync,
+                  child: Text('newApiImageAsync'),
+                ),
               ],
               onChanged: (value) => setState(
                 () => _protocol = value ?? ModelProtocol.openai,
@@ -727,6 +776,10 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
                 DropdownMenuItem(
                   value: ModelProtocol.google,
                   child: Text('google'),
+                ),
+                DropdownMenuItem(
+                  value: ModelProtocol.newApiImageAsync,
+                  child: Text('newApiImageAsync'),
                 ),
               ],
               onChanged: (value) => setState(

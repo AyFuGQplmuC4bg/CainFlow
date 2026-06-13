@@ -3,7 +3,7 @@ import 'dart:convert';
 import '../../core/storage/local_kv_store.dart';
 import '../../core/storage/storage_keys.dart';
 
-enum ModelProtocol { openai, google }
+enum ModelProtocol { openai, google, newApiImageAsync }
 
 enum ModelTaskType { chat, image, video }
 
@@ -100,6 +100,8 @@ class RuntimeSettings {
     this.retryCount = 0,
     this.activeChatModelId = '',
     this.activeImageModelId = '',
+    this.asyncPollIntervalSeconds = 2,
+    this.asyncTimeoutSeconds = 300,
   });
 
   factory RuntimeSettings.defaults() => const RuntimeSettings();
@@ -110,6 +112,8 @@ class RuntimeSettings {
       retryCount: _intFrom(json['retryCount'], 0),
       activeChatModelId: json['activeChatModelId']?.toString() ?? '',
       activeImageModelId: json['activeImageModelId']?.toString() ?? '',
+      asyncPollIntervalSeconds: _intFrom(json['asyncPollIntervalSeconds'], 2),
+      asyncTimeoutSeconds: _intFrom(json['asyncTimeoutSeconds'], 300),
     );
   }
 
@@ -117,12 +121,16 @@ class RuntimeSettings {
   final int retryCount;
   final String activeChatModelId;
   final String activeImageModelId;
+  final int asyncPollIntervalSeconds;
+  final int asyncTimeoutSeconds;
 
   RuntimeSettings copyWith({
     int? requestTimeoutSeconds,
     int? retryCount,
     String? activeChatModelId,
     String? activeImageModelId,
+    int? asyncPollIntervalSeconds,
+    int? asyncTimeoutSeconds,
   }) {
     return RuntimeSettings(
       requestTimeoutSeconds:
@@ -130,6 +138,9 @@ class RuntimeSettings {
       retryCount: retryCount ?? this.retryCount,
       activeChatModelId: activeChatModelId ?? this.activeChatModelId,
       activeImageModelId: activeImageModelId ?? this.activeImageModelId,
+      asyncPollIntervalSeconds:
+          asyncPollIntervalSeconds ?? this.asyncPollIntervalSeconds,
+      asyncTimeoutSeconds: asyncTimeoutSeconds ?? this.asyncTimeoutSeconds,
     );
   }
 
@@ -139,6 +150,8 @@ class RuntimeSettings {
       'retryCount': retryCount,
       'activeChatModelId': activeChatModelId,
       'activeImageModelId': activeImageModelId,
+      'asyncPollIntervalSeconds': asyncPollIntervalSeconds,
+      'asyncTimeoutSeconds': asyncTimeoutSeconds,
     };
   }
 }
@@ -240,6 +253,7 @@ int _intFrom(Object? value, int fallback) {
 ModelProtocol _protocolFrom(Object? value) {
   return switch (value?.toString()) {
     'google' => ModelProtocol.google,
+    'newApiImageAsync' => ModelProtocol.newApiImageAsync,
     _ => ModelProtocol.openai,
   };
 }

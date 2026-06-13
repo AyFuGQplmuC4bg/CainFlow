@@ -59,6 +59,35 @@ void main() {
     expect(settings.runtime.retryCount, 0);
     expect(settings.runtime.activeChatModelId, '');
     expect(settings.runtime.activeImageModelId, '');
+    expect(settings.runtime.asyncPollIntervalSeconds, 2);
+    expect(settings.runtime.asyncTimeoutSeconds, 300);
+  });
+
+  test('async runtime fields and newApiImageAsync protocol round-trip', () {
+    final repository = ProviderSettingsRepository(store: _MemoryLocalKvStore());
+    repository.save(
+      const ProviderSettings(
+        providers: [
+          ProviderConfig(
+            id: 'p',
+            name: 'Async',
+            protocol: ModelProtocol.newApiImageAsync,
+            apiKey: 'sk-secret-key',
+            endpoint: 'https://api.example.com',
+          ),
+        ],
+        models: [],
+        runtime: RuntimeSettings(
+          asyncPollIntervalSeconds: 5,
+          asyncTimeoutSeconds: 120,
+        ),
+      ),
+    );
+
+    final restored = repository.load();
+    expect(restored.providers.single.protocol, ModelProtocol.newApiImageAsync);
+    expect(restored.runtime.asyncPollIntervalSeconds, 5);
+    expect(restored.runtime.asyncTimeoutSeconds, 120);
   });
 }
 

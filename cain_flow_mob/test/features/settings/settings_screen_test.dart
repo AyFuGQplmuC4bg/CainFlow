@@ -197,6 +197,11 @@ void main() {
       ),
     );
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('workflow-import-field')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.enterText(
       find.byKey(const Key('workflow-import-field')),
       json,
@@ -236,6 +241,11 @@ void main() {
       ),
     );
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('workflow-import-field')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.enterText(
       find.byKey(const Key('workflow-import-field')),
       '{not valid',

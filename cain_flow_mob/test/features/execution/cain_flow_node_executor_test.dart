@@ -277,8 +277,114 @@ void main() {
     });
   });
 
-  group('ImageImport node', () {
-    test('resolves a stored asset id into a passthrough payload', () async {
+  group('ImageGenerate async (newApiImageAsync)', () {
+    ProviderSettings asyncSettings({int pollInterval = 1, int timeout = 30}) {
+      return ProviderSettings(
+        providers: const [
+          ProviderConfig(
+            id: 'prov',
+            name: 'Async',
+            protocol: ModelProtocol.newApiImageAsync,
+            apiKey: 'sk-secret',
+            endpoint: 'https://api.example.com',
+          ),
+        ],
+        models: const [
+          ModelConfig(
+            id: 'aimg',
+            name: 'AsyncImage',
+            modelId: 'flux-async',
+            taskType: ModelTaskType.image,
+            protocol: ModelProtocol.newApiImageAsync,
+            providerIds: ['prov'],
+          ),
+        ],
+        runtime: RuntimeSettings(
+          activeImageModelId: 'aimg',
+          asyncPollIntervalSeconds: pollInterval,
+          asyncTimeoutSeconds: timeout,
+        ),
+      );
+    }
+
+    test('submits, polls until completed, and returns the result URL',
+        () async {
+      final harness = ExecutorHarness(
+        settings: asyncSettings(),
+        responses: const [
+          FakeResponse(200, '{"id":"task-1"}'), // submit
+          FakeResponse(200, '{"status":"pending"}'), // poll 1
+          FakeResponse(
+            200,
+            '{"status":"completed","data":{"image_url":"https://cdn/x.png"}}',
+          ), // poll 2
+        ],
+      );
+      final node = const FlowNode(
+        id: 'gen',
+        type: 'ImageGenerate',
+        x: 0,
+        y: 0,
+      );
+
+      final result = await harness.executor.execute(
+        node,
+        _context(inputs: {'prompt': 'a city'}),
+      );
+
+      final image = result.outputs['image'] as Map;
+      expect(image['kind'], 'url');
+      expect(image['url'], 'https://cdn/x.png');
+      // 1 submit + 2 polls.
+      expect(harness.client.requests.length, 3);
+    });
+
+    test('throws when the task reports failure', () async {
+      final harness = ExecutorHarness(
+        settings: asyncSettings(),
+        responses: const [
+          FakeResponse(200, '{"id":"task-2"}'),
+          FakeResponse(200, '{"status":"failed"}'),
+        ],
+      );
+      final node = const FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0);
+
+      await expectLater(
+        harness.executor.execute(node, _context(inputs: {'prompt': 'x'})),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('stops polling when canceled', () async {
+      var canceled = false;
+      final harness = ExecutorHarness(
+        settings: asyncSettings(),
+        responses: const [
+          FakeResponse(200, '{"id":"task-3"}'),
+          FakeResponse(200, '{"status":"pending"}'),
+        ],
+      );
+      final node = const FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0);
+      final context = NodeExecutionContext(
+        inputs: const {'prompt': 'x'},
+        previousResults: const {},
+        isCanceled: () => canceled,
+      );
+
+      // Cancel shortly after submission.
+      Future<void>.delayed(
+        const Duration(milliseconds: 400),
+        () => canceled = true,
+      );
+
+      await expectLater(
+        harness.executor.execute(node, context),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
+  group('ImageImport node', () {    test('resolves a stored asset id into a passthrough payload', () async {
       final harness = ExecutorHarness();
       final asset = await harness.mediaRepository.saveBytes(
         workflowId: 'wf-test',
