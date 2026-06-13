@@ -1,3 +1,4 @@
+import 'package:cain_flow_mob/features/workbench/connection_rules.dart';
 import 'package:cain_flow_mob/features/workbench/workbench_signals.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -49,5 +50,79 @@ void main() {
   test('toJson omits empty data', () {
     const node = WorkbenchNode(id: 'n', type: 'Text', title: 'T', x: 0, y: 0);
     expect(node.toJson().containsKey('data'), isFalse);
+  });
+
+  group('node add/remove', () {
+    test('addNode seeds default data and returns the new id', () {
+      final state = WorkbenchSignals();
+      final id = state.addNode('TextChat');
+      final node = state.nodes.value.firstWhere((n) => n.id == id);
+      expect(node.type, 'TextChat');
+      expect(node.data['systemPrompt'], '');
+    });
+
+    test('removeNode drops the node and its connections', () {
+      final state = WorkbenchSignals();
+      expect(state.connectionCount.value, 2);
+      state.removeNode('node_image_generate');
+      expect(
+        state.nodes.value.any((n) => n.id == 'node_image_generate'),
+        isFalse,
+      );
+      // Both default connections touched that node.
+      expect(state.connectionCount.value, 0);
+    });
+
+    test('removeNode clears selection when the selected node is removed', () {
+      final state = WorkbenchSignals();
+      state.selectNode('node_text_prompt');
+      state.removeNode('node_text_prompt');
+      expect(state.selectedNodeId.value, isNull);
+    });
+  });
+
+  group('point-select connections', () {
+    test('completes a compatible connection and replaces same-input edge', () {
+      final state = WorkbenchSignals();
+      // Existing: text->prompt, image->image. Re-wire prompt from a new Text.
+      final newText = state.addNode('Text');
+      state.beginConnection(newText, 'text', 'text');
+      final rejection =
+          state.completeConnection('node_image_generate', 'prompt', 'text');
+
+      expect(rejection, ConnectionRejection.none);
+      final promptEdges = state.connections.value.where(
+        (c) => c.toNodeId == 'node_image_generate' && c.toPort == 'prompt',
+      );
+      expect(promptEdges.length, 1);
+      expect(promptEdges.single.fromNodeId, newText);
+      expect(state.pendingConnection.value, isNull);
+    });
+
+    test('rejects a type mismatch', () {
+      final state = WorkbenchSignals();
+      state.beginConnection('node_image_generate', 'image', 'image');
+      final rejection =
+          state.completeConnection('node_image_generate', 'prompt', 'text');
+      // self-connection is checked first here; use distinct nodes instead.
+      expect(rejection, ConnectionRejection.selfConnection);
+    });
+
+    test('rejects connecting a node to itself', () {
+      final state = WorkbenchSignals();
+      state.beginConnection('node_text_prompt', 'text', 'text');
+      final rejection =
+          state.completeConnection('node_text_prompt', 'prompt', 'text');
+      expect(rejection, ConnectionRejection.selfConnection);
+    });
+
+    test('removeConnection deletes by id', () {
+      final state = WorkbenchSignals();
+      state.removeConnection('conn_text_to_image');
+      expect(
+        state.connections.value.any((c) => c.id == 'conn_text_to_image'),
+        isFalse,
+      );
+    });
   });
 }

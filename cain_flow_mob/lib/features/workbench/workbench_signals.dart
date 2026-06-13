@@ -1,5 +1,8 @@
 import 'package:signals/signals.dart';
 
+import '../nodes/node_registry.dart';
+import 'connection_rules.dart';
+
 enum WorkbenchRunState {
   idle,
   running,
@@ -126,9 +129,21 @@ class WorkbenchConnection {
   }
 }
 
+/// A connection origin held while the user is picking the destination port.
+class PendingConnection {
+  const PendingConnection({
+    required this.fromNodeId,
+    required this.fromPort,
+    required this.type,
+  });
+
+  final String fromNodeId;
+  final String fromPort;
+  final String type;
+}
+
 class WorkbenchSignals {
   WorkbenchSignals();
-
   final activeWorkflowName = signal('Untitled Workflow');
   final nodes = signal<List<WorkbenchNode>>(const [
     WorkbenchNode(
@@ -172,6 +187,10 @@ class WorkbenchSignals {
     ),
   ]);
   final selectedNodeId = signal<String?>(null);
+  final pendingConnection = signal<PendingConnection?>(null);
+  final lastConnectionRejection = signal<ConnectionRejection>(
+    ConnectionRejection.none,
+  );
   final runState = signal(WorkbenchRunState.idle);
   final panOffset = signal(const NodeOffset(0, 0));
   final zoom = signal(1.0);
@@ -211,6 +230,113 @@ class WorkbenchSignals {
     nodes.value = [
       for (final node in nodes.value)
         if (node.id == nodeId) node.withData(Map<String, dynamic>.from(data)) else node,
+    ];
+  }
+
+  /// Adds a node of [type] at [position] (defaults to a spread-out spot),
+  /// seeded with the definition's default data. Returns the new node id.
+  String addNode(String type, {NodeOffset? position}) {
+    final definition = nodeRegistry.get(type);
+    final id = 'node_${type}_${DateTime.now().microsecondsSinceEpoch}';
+    final spot = position ?? _nextNodeSpot();
+    final node = WorkbenchNode(
+      id: id,
+      type: type,
+      title: definition?.title ?? type,
+      x: spot.dx,
+      y: spot.dy,
+      data: definition?.defaultData() ?? const {},
+    );
+    nodes.value = [...nodes.value, node];
+    return id;
+  }
+
+  /// Removes [nodeId] and every connection touching it.
+  void removeNode(String nodeId) {
+    nodes.value = [
+      for (final node in nodes.value)
+        if (node.id != nodeId) node,
+    ];
+    connections.value = [
+      for (final connection in connections.value)
+        if (connection.fromNodeId != nodeId && connection.toNodeId != nodeId)
+          connection,
+    ];
+    if (selectedNodeId.value == nodeId) selectedNodeId.value = null;
+  }
+
+  NodeOffset _nextNodeSpot() {
+    // Cascade new nodes so they don't stack exactly on top of each other.
+    final count = nodes.value.length;
+    return NodeOffset(120 + (count % 5) * 40, 120 + (count % 5) * 40);
+  }
+
+  // --- Point-select connections --------------------------------------------
+
+  /// Begins a connection from an output port. A second tap on a compatible
+  /// input port completes it via [completeConnection].
+  void beginConnection(String nodeId, String port, String type) {
+    pendingConnection.value =
+        PendingConnection(fromNodeId: nodeId, fromPort: port, type: type);
+    lastConnectionRejection.value = ConnectionRejection.none;
+  }
+
+  void cancelPendingConnection() {
+    pendingConnection.value = null;
+  }
+
+  /// Attempts to complete the pending connection at an input port. Returns the
+  /// rejection reason (or [ConnectionRejection.none] on success) and clears the
+  /// pending state. A successful edge replaces any existing edge on the same
+  /// input port (single-input rule).
+  ConnectionRejection completeConnection(
+    String toNodeId,
+    String toPort,
+    String toType,
+  ) {
+    final pending = pendingConnection.value;
+    if (pending == null) return ConnectionRejection.none;
+
+    final attempt = ConnectionAttempt(
+      fromNodeId: pending.fromNodeId,
+      fromPort: pending.fromPort,
+      fromType: pending.type,
+      toNodeId: toNodeId,
+      toPort: toPort,
+      toType: toType,
+    );
+    final rejection =
+        validateConnection(attempt, nodes.value, connections.value);
+    lastConnectionRejection.value = rejection;
+    if (rejection != ConnectionRejection.none) {
+      pendingConnection.value = null;
+      return rejection;
+    }
+
+    final type = pending.type.isNotEmpty ? pending.type : toType;
+    final id =
+        'conn_${pending.fromNodeId}_${pending.fromPort}_to_${toNodeId}_$toPort';
+    connections.value = [
+      // Drop any existing edge feeding the same input port.
+      for (final c in connections.value)
+        if (!(c.toNodeId == toNodeId && c.toPort == toPort)) c,
+      WorkbenchConnection(
+        id: id,
+        fromNodeId: pending.fromNodeId,
+        fromPort: pending.fromPort,
+        toNodeId: toNodeId,
+        toPort: toPort,
+        type: type,
+      ),
+    ];
+    pendingConnection.value = null;
+    return ConnectionRejection.none;
+  }
+
+  void removeConnection(String connectionId) {
+    connections.value = [
+      for (final c in connections.value)
+        if (c.id != connectionId) c,
     ];
   }
 
