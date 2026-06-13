@@ -37,6 +37,8 @@ dependencies:
   signals: ^7.1.0
   mmkv: ^2.4.0
   path_provider: ^2.1.5
+  image_picker: ^1.1.2
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:

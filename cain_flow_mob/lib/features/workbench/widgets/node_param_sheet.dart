@@ -17,6 +17,7 @@ class NodeParamSheet extends StatefulWidget {
     required this.models,
     required this.onChanged,
     required this.onDelete,
+    this.onPickImage,
   });
 
   final WorkbenchNode node;
@@ -24,6 +25,10 @@ class NodeParamSheet extends StatefulWidget {
   final List<ModelConfig> models;
   final ValueChanged<Map<String, dynamic>> onChanged;
   final VoidCallback onDelete;
+
+  /// Picks an image and returns the saved asset id (or null if cancelled).
+  /// Injected by the screen so this widget stays free of platform plugins.
+  final Future<String?> Function()? onPickImage;
 
   @override
   State<NodeParamSheet> createState() => _NodeParamSheetState();
@@ -114,10 +119,46 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
       NodeParamControl.modelPicker => _modelPicker(param),
       NodeParamControl.select => _select(param),
       NodeParamControl.customParams => _customParams(param),
+      NodeParamControl.imagePicker => _imagePicker(param),
       NodeParamControl.number => _textField(param, number: true),
       NodeParamControl.multiline => _textField(param, multiline: true),
       NodeParamControl.text => _textField(param),
     };
+  }
+
+  Widget _imagePicker(NodeParamDefinition param) {
+    final currentId = _data[param.name]?.toString() ?? '';
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: param.label,
+        border: const OutlineInputBorder(),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              currentId.isEmpty ? 'No image selected' : 'Selected: $currentId',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          TextButton.icon(
+            key: ValueKey('pick_${param.name}'),
+            onPressed: widget.onPickImage == null
+                ? null
+                : () async {
+                    final assetId = await widget.onPickImage!();
+                    if (assetId != null && assetId.isNotEmpty) {
+                      _set(param.name, assetId);
+                    }
+                  },
+            icon: const Icon(Icons.image_outlined),
+            label: const Text('Choose'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _textField(

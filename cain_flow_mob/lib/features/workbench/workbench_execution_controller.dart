@@ -44,6 +44,7 @@ class WorkbenchExecutionController {
 
     try {
       final result = await runner.run(workflow);
+      _recordImageOutputs(result);
       _onResult(result);
       return result;
     } catch (error) {
@@ -69,8 +70,21 @@ class WorkbenchExecutionController {
     logs.add(LogLevel.info, 'Workflow run stop requested', scope: 'workbench');
   }
 
-  void _onResult(WorkflowRunResult result) {
-    switch (result.state) {
+  /// Captures image outputs (`{kind: url|asset}`) so the canvas can show
+  /// thumbnails on ImageGenerate/ImagePreview/ImageImport nodes after a run.
+  void _recordImageOutputs(WorkflowRunResult result) {
+    result.results.forEach((nodeId, nodeResult) {
+      final image = nodeResult.outputs['image'];
+      if (image is Map) {
+        executionSignals.setImageOutput(
+          nodeId,
+          Map<String, dynamic>.from(image),
+        );
+      }
+    });
+  }
+
+  void _onResult(WorkflowRunResult result) {    switch (result.state) {
       case WorkflowExecutionState.completed:
         workbench.runState.value = WorkbenchRunState.idle;
         logs.add(LogLevel.info, 'Workflow run completed', scope: 'workbench');

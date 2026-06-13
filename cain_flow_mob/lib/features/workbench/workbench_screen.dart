@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:signals/signals_flutter.dart';
 
 import '../execution/cain_flow_node_executor.dart';
@@ -217,6 +218,7 @@ Future<void> _openNodeEditor(BuildContext context, String nodeId) async {
       definition: nodeRegistry.get(node.type),
       models: models,
       onChanged: (data) => workbenchSignals.updateNodeData(nodeId, data),
+      onPickImage: () => _pickAndStoreImage(),
       onDelete: () {
         workbenchSignals.removeNode(nodeId);
         Navigator.of(sheetContext).pop();
@@ -260,6 +262,31 @@ List<ModelConfig> _loadModels() {
   } catch (_) {
     return const [];
   }
+}
+
+/// Picks an image from the gallery, stores its bytes via [MediaRepository],
+/// and returns the new asset id (or null if the user cancelled).
+Future<String?> _pickAndStoreImage() async {
+  final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+  if (picked == null) return null;
+  final bytes = await picked.readAsBytes();
+  final store = MmkvLocalKvStore();
+  final media = MediaRepository(store: store);
+  final asset = await media.saveBytes(
+    workflowId: workbenchSignals.activeWorkflowName.value,
+    fileName: picked.name,
+    mimeType: _mimeForName(picked.name),
+    bytes: bytes,
+  );
+  return asset.id;
+}
+
+String _mimeForName(String name) {
+  final lower = name.toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  return 'image/png';
 }
 
 class _CompactWorkbench extends StatelessWidget {
@@ -390,6 +417,7 @@ class _CanvasStage extends SignalWidget {
                   node: node,
                   definition: nodeRegistry.get(node.type),
                   selected: state.selectedNodeId.value == node.id,
+                  imagePayload: executionSignals.imageOutputs.value[node.id],
                   pendingFromPort:
                       state.pendingConnection.value?.fromNodeId == node.id
                           ? state.pendingConnection.value?.fromPort

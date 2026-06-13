@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../nodes/node_definition.dart';
 import '../workbench_signals.dart';
+import 'node_image_thumbnail.dart';
 
 const workbenchNodeSize = Size(220, 150);
 
@@ -16,6 +17,7 @@ class NodeCard extends StatelessWidget {
     this.onOpen,
     this.onPortTap,
     this.pendingFromPort,
+    this.imagePayload,
   });
 
   final WorkbenchNode node;
@@ -35,6 +37,9 @@ class NodeCard extends StatelessWidget {
   /// node, highlighted to show the user where the link starts.
   final String? pendingFromPort;
 
+  /// Image output payload (`{kind: url|asset}`) to preview inside the card.
+  final Map<String, dynamic>? imagePayload;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -51,7 +56,7 @@ class NodeCard extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         width: workbenchNodeSize.width,
-        height: workbenchNodeSize.height,
+        height: workbenchNodeSize.height + (imagePayload != null ? 56 : 0),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
@@ -88,6 +93,10 @@ class NodeCard extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            if (imagePayload != null) ...[
+              const SizedBox(height: 8),
+              NodeImageThumbnail(payload: imagePayload!, size: 48),
+            ],
             const Spacer(),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

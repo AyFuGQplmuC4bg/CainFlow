@@ -69,6 +69,13 @@ const nodeRegistry = NodeRegistry([
     outputPorts: [
       NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
     ],
+    params: [
+      NodeParamDefinition(
+        name: 'assetId',
+        label: 'Image',
+        control: NodeParamControl.imagePicker,
+      ),
+    ],
   ),
   NodeDefinition(
     type: 'ImageGenerate',

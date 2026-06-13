@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cain_flow_mob/core/models/flow_node.dart';
@@ -276,8 +277,63 @@ void main() {
     });
   });
 
-  group('ImageSave node', () {
-    test('passes through an existing local asset payload', () async {
+  group('ImageImport node', () {
+    test('resolves a stored asset id into a passthrough payload', () async {
+      final harness = ExecutorHarness();
+      final asset = await harness.mediaRepository.saveBytes(
+        workflowId: 'wf-test',
+        fileName: 'pic.png',
+        mimeType: 'image/png',
+        bytes: base64Decode(_tinyPngBase64),
+      );
+      final node = FlowNode(
+        id: 'imp',
+        type: 'ImageImport',
+        x: 0,
+        y: 0,
+        data: {'assetId': asset.id},
+      );
+
+      final result = await harness.executor.execute(node, _context());
+
+      final image = result.outputs['image'] as Map;
+      expect(image['kind'], 'asset');
+      expect(image['assetId'], asset.id);
+    });
+
+    test('throws when no image has been selected', () async {
+      final harness = ExecutorHarness();
+      final node = const FlowNode(id: 'imp', type: 'ImageImport', x: 0, y: 0);
+      await expectLater(
+        harness.executor.execute(node, _context()),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
+  group('ImagePreview node', () {
+    test('passes its input image through to its output', () async {
+      final harness = ExecutorHarness();
+      final node = const FlowNode(id: 'prev', type: 'ImagePreview', x: 0, y: 0);
+      final payload = {'kind': 'url', 'url': 'https://cdn.example.com/a.png'};
+
+      final result = await harness.executor.execute(
+        node,
+        _context(inputs: {'image': payload}),
+      );
+
+      expect(result.outputs['image'], payload);
+    });
+
+    test('produces no output when no image is connected', () async {
+      final harness = ExecutorHarness();
+      final node = const FlowNode(id: 'prev', type: 'ImagePreview', x: 0, y: 0);
+      final result = await harness.executor.execute(node, _context());
+      expect(result.outputs.containsKey('image'), isFalse);
+    });
+  });
+
+  group('ImageSave node', () {    test('passes through an existing local asset payload', () async {
       final harness = ExecutorHarness();
       final node = const FlowNode(id: 'save', type: 'ImageSave', x: 0, y: 0);
       final assetPayload = {

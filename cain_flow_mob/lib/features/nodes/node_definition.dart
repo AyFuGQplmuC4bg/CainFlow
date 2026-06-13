@@ -6,6 +6,7 @@ enum NodeParamControl {
   select,
   modelPicker,
   customParams,
+  imagePicker,
 }
 
 class NodeParamDefinition {

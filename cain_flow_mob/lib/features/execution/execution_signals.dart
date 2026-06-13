@@ -19,6 +19,10 @@ class ExecutionSignals {
   final nodeStates = signal<Map<String, NodeRunSnapshot>>(const {});
   final lastError = signal<String>('');
 
+  /// Latest image output payload per node id (`{kind: url|asset, ...}`),
+  /// used to render canvas thumbnails after a run.
+  final imageOutputs = signal<Map<String, Map<String, dynamic>>>(const {});
+
   late final isRunning = computed(
     () => workflowState.value == WorkflowExecutionState.running,
   );
@@ -27,10 +31,16 @@ class ExecutionSignals {
     workflowState.value = WorkflowExecutionState.idle;
     activeNodeId.value = null;
     lastError.value = '';
+    imageOutputs.value = const {};
     nodeStates.value = {
       for (final id in nodeIds)
         id: const NodeRunSnapshot(state: NodeRunState.pending),
     };
+  }
+
+  /// Records an image output payload for [nodeId] for canvas previews.
+  void setImageOutput(String nodeId, Map<String, dynamic> payload) {
+    imageOutputs.value = {...imageOutputs.value, nodeId: payload};
   }
 
   void markWorkflowRunning() {

@@ -27,8 +27,12 @@ class CainFlowNodeExecutor implements NodeExecutor {
         return _executeText(node);
       case 'TextChat':
         return _executeTextChat(node, context);
+      case 'ImageImport':
+        return _executeImageImport(node);
       case 'ImageGenerate':
         return _executeImageGenerate(node, context);
+      case 'ImagePreview':
+        return _executeImagePreview(node, context);
       case 'ImageSave':
         return _executeImageSave(node, context);
       default:
@@ -40,6 +44,39 @@ class CainFlowNodeExecutor implements NodeExecutor {
     final value =
         _stringFrom(node.data['text']) ?? _stringFrom(node.extra['text']) ?? '';
     return NodeExecutionResult(nodeId: node.id, outputs: {'text': value});
+  }
+
+  /// ImageImport resolves the asset chosen in the editor (stored as
+  /// `data.assetId`) into a passthrough asset payload for downstream nodes.
+  NodeExecutionResult _executeImageImport(FlowNode node) {
+    final assetId = _stringFrom(node.data['assetId']);
+    if (assetId == null || assetId.isEmpty) {
+      throw StateError('ImageImport node ${node.id} has no selected image');
+    }
+    final asset = services.mediaRepository
+        .loadAll()
+        .where((a) => a.id == assetId)
+        .firstOrNull;
+    if (asset == null) {
+      throw StateError('Imported image $assetId no longer exists');
+    }
+    return NodeExecutionResult(
+      nodeId: node.id,
+      outputs: {'image': _assetPayload(asset)},
+    );
+  }
+
+  /// ImagePreview passes its input image straight to its output so the canvas
+  /// thumbnail can render it; it performs no network or disk work.
+  NodeExecutionResult _executeImagePreview(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) {
+    final input = context.inputs['image'];
+    return NodeExecutionResult(
+      nodeId: node.id,
+      outputs: input == null ? const {} : {'image': input},
+    );
   }
 
   Future<NodeExecutionResult> _executeTextChat(
