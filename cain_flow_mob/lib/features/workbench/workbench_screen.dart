@@ -8,6 +8,7 @@ import '../logs/log_panel.dart';
 import '../logs/log_signals.dart';
 import '../media/media_repository.dart';
 import '../nodes/node_registry.dart';
+import '../nodes/node_definition.dart';
 import '../settings/provider_settings.dart';
 import '../settings/settings_screen.dart';
 import '../../core/network/provider_client.dart';
@@ -15,8 +16,10 @@ import '../../core/network/retrying_provider_client.dart';
 import '../../core/storage/mmkv_local_kv_store.dart';
 import 'workbench_execution_controller.dart';
 import 'workbench_signals.dart';
+import 'connection_rules.dart';
 import 'widgets/connection_layer.dart';
 import 'widgets/node_card.dart';
+import 'widgets/node_param_sheet.dart';
 
 /// Default production controller wired to MMKV-backed services and the
 /// real HTTP provider client with retry support. Built lazily so widget
@@ -166,6 +169,99 @@ Future<void> _showLogs(BuildContext context) {
   );
 }
 
+/// Bottom-sheet list of registered node types; tapping one adds it.
+Future<void> _showNodePicker(BuildContext context) async {
+  final type = await showModalBottomSheet<String>(
+    context: context,
+    builder: (context) {
+      final theme = Theme.of(context);
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text('Add node', style: theme.textTheme.titleMedium),
+            ),
+            for (final definition in nodeRegistry.all)
+              ListTile(
+                title: Text(definition.title),
+                subtitle: Text(definition.description),
+                onTap: () => Navigator.of(context).pop(definition.type),
+              ),
+          ],
+        ),
+      );
+    },
+  );
+  if (type == null) return;
+  final id = workbenchSignals.addNode(type);
+  workbenchSignals.selectNode(id);
+}
+
+/// Opens the parameter editor sheet for [nodeId].
+Future<void> _openNodeEditor(BuildContext context, String nodeId) async {
+  final node = workbenchSignals.nodes.value
+      .where((n) => n.id == nodeId)
+      .cast<WorkbenchNode?>()
+      .firstWhere((n) => n != null, orElse: () => null);
+  if (node == null) return;
+  final models = _loadModels();
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) => NodeParamSheet(
+      node: node,
+      definition: nodeRegistry.get(node.type),
+      models: models,
+      onChanged: (data) => workbenchSignals.updateNodeData(nodeId, data),
+      onDelete: () {
+        workbenchSignals.removeNode(nodeId);
+        Navigator.of(sheetContext).pop();
+      },
+    ),
+  );
+}
+
+/// Handles a port tap for point-select connections: an output port arms a
+/// pending connection; an input port completes it (with rejection feedback).
+void _handlePortTap(
+  BuildContext context,
+  String nodeId,
+  NodePortDefinition port,
+  bool isOutput,
+) {
+  final state = workbenchSignals;
+  if (isOutput) {
+    state.beginConnection(nodeId, port.name, port.type);
+    return;
+  }
+  if (state.pendingConnection.value == null) return;
+  final rejection = state.completeConnection(nodeId, port.name, port.type);
+  if (rejection != ConnectionRejection.none) {
+    final message = switch (rejection) {
+      ConnectionRejection.selfConnection => 'Cannot connect a node to itself',
+      ConnectionRejection.typeMismatch => 'Port types do not match',
+      ConnectionRejection.cycle => 'That link would create a cycle',
+      ConnectionRejection.none => '',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+}
+
+List<ModelConfig> _loadModels() {
+  try {
+    final store = MmkvLocalKvStore();
+    return ProviderSettingsRepository(store: store).load().models;
+  } catch (_) {
+    return const [];
+  }
+}
+
 class _CompactWorkbench extends StatelessWidget {
   const _CompactWorkbench();
 
@@ -199,8 +295,8 @@ class _WorkflowRail extends SignalWidget {
             const SizedBox(height: 12),
             _RailAction(
               icon: Icons.add_rounded,
-              label: 'New workflow',
-              onTap: () {},
+              label: 'Add node',
+              onTap: () => _showNodePicker(context),
             ),
             const SizedBox(height: 8),
             _WorkflowTile(
@@ -267,7 +363,11 @@ class _CanvasStage extends SignalWidget {
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: state.clearSelection,
+              onTap: () {
+                state.clearSelection();
+                state.cancelPendingConnection();
+              },
+              onLongPress: () => _showNodePicker(context),
               onPanUpdate: (details) {
                 state.moveCanvas(
                   NodeOffset(details.delta.dx, details.delta.dy),
@@ -290,7 +390,14 @@ class _CanvasStage extends SignalWidget {
                   node: node,
                   definition: nodeRegistry.get(node.type),
                   selected: state.selectedNodeId.value == node.id,
+                  pendingFromPort:
+                      state.pendingConnection.value?.fromNodeId == node.id
+                          ? state.pendingConnection.value?.fromPort
+                          : null,
                   onSelect: () => state.selectNode(node.id),
+                  onOpen: () => _openNodeEditor(context, node.id),
+                  onPortTap: (port, isOutput) =>
+                      _handlePortTap(context, node.id, port, isOutput),
                   onMove: (offset) {
                     state.moveNode(
                       node.id,

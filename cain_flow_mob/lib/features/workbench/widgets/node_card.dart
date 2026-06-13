@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../nodes/node_definition.dart';
 import '../workbench_signals.dart';
 
-const workbenchNodeSize = Size(220, 132);
+const workbenchNodeSize = Size(220, 150);
 
 class NodeCard extends StatelessWidget {
   const NodeCard({
@@ -13,6 +13,9 @@ class NodeCard extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.onMove,
+    this.onOpen,
+    this.onPortTap,
+    this.pendingFromPort,
   });
 
   final WorkbenchNode node;
@@ -21,12 +24,26 @@ class NodeCard extends StatelessWidget {
   final VoidCallback onSelect;
   final ValueChanged<NodeOffset> onMove;
 
+  /// Tapping the node body selects it and opens its editor (param sheet).
+  final VoidCallback? onOpen;
+
+  /// Called when a port dot is tapped. [isOutput] distinguishes the origin
+  /// (output) from the destination (input) of a point-select connection.
+  final void Function(NodePortDefinition port, bool isOutput)? onPortTap;
+
+  /// Output port name currently armed as a pending connection origin on this
+  /// node, highlighted to show the user where the link starts.
+  final String? pendingFromPort;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return GestureDetector(
-      onTap: onSelect,
+      onTap: () {
+        onSelect();
+        onOpen?.call();
+      },
       onPanStart: (_) => onSelect(),
       onPanUpdate: (details) {
         onMove(NodeOffset(details.delta.dx, details.delta.dy));
@@ -79,12 +96,19 @@ class NodeCard extends StatelessWidget {
                   ports: definition?.inputPorts ?? const [],
                   fallbackLabel: 'in',
                   color: theme.colorScheme.secondary,
+                  onPortTap: onPortTap == null
+                      ? null
+                      : (port) => onPortTap!(port, false),
                 ),
                 _PortCluster(
                   ports: definition?.outputPorts ?? const [],
                   fallbackLabel: 'out',
                   color: theme.colorScheme.primary,
                   reverse: true,
+                  pendingPort: pendingFromPort,
+                  onPortTap: onPortTap == null
+                      ? null
+                      : (port) => onPortTap!(port, true),
                 ),
               ],
             ),
@@ -101,37 +125,98 @@ class _PortCluster extends StatelessWidget {
     required this.fallbackLabel,
     required this.color,
     this.reverse = false,
+    this.onPortTap,
+    this.pendingPort,
   });
 
   final List<NodePortDefinition> ports;
   final String fallbackLabel;
   final Color color;
   final bool reverse;
+  final ValueChanged<NodePortDefinition>? onPortTap;
+  final String? pendingPort;
 
   @override
   Widget build(BuildContext context) {
-    final label = ports.isEmpty ? fallbackLabel : ports.first.label;
+    if (ports.isEmpty) {
+      return SizedBox(
+        width: 82,
+        child: Row(
+          mainAxisAlignment:
+              reverse ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [Text(fallbackLabel)],
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: 90,
+      child: Column(
+        crossAxisAlignment:
+            reverse ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final port in ports)
+            _PortRow(
+              port: port,
+              color: color,
+              reverse: reverse,
+              armed: pendingPort == port.name,
+              onTap: onPortTap == null ? null : () => onPortTap!(port),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PortRow extends StatelessWidget {
+  const _PortRow({
+    required this.port,
+    required this.color,
+    required this.reverse,
+    required this.armed,
+    this.onTap,
+  });
+
+  final NodePortDefinition port;
+  final Color color;
+  final bool reverse;
+  final bool armed;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
     final dot = Container(
-      width: 9,
-      height: 9,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      width: armed ? 13 : 9,
+      height: armed ? 13 : 9,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: armed ? Border.all(color: Colors.white, width: 2) : null,
+      ),
     );
     final text = Flexible(
       child: Text(
-        label,
+        port.label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+        textAlign: reverse ? TextAlign.end : TextAlign.start,
       ),
     );
 
-    return SizedBox(
-      width: 82,
-      child: Row(
-        mainAxisAlignment:
-            reverse ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: reverse
-            ? [text, const SizedBox(width: 6), dot]
-            : [dot, const SizedBox(width: 6), text],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisAlignment:
+              reverse ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: reverse
+              ? [text, const SizedBox(width: 6), dot]
+              : [dot, const SizedBox(width: 6), text],
+        ),
       ),
     );
   }
