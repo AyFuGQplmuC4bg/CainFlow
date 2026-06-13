@@ -59,6 +59,8 @@ class CainFlowNodeExecutor implements NodeExecutor {
       provider: provider,
       model: model,
       prompt: prompt,
+      systemPrompt: _stringFrom(node.data['systemPrompt']) ?? '',
+      customParams: _customParamsFrom(node.data['customParams']),
     );
 
     final response = await _send(node: node, request: request, scope: 'TextChat');
@@ -85,6 +87,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       prompt: prompt,
       size: _stringFrom(node.data['size']) ?? '',
       quality: _stringFrom(node.data['quality']) ?? '',
+      customParams: _customParamsFrom(node.data['customParams']),
     );
 
     final response =
@@ -382,4 +385,33 @@ String? _stringFrom(Object? value) {
   if (value == null) return null;
   if (value is String) return value;
   return value.toString();
+}
+
+/// Normalizes a node's `customParams` entry into a request param map.
+///
+/// Accepts a `Map` (preferred) and coerces string-typed scalars produced by
+/// the editor form (`"7"`, `"true"`) into `num`/`bool` so providers receive
+/// properly typed JSON. Non-map values yield an empty map.
+Map<String, dynamic> _customParamsFrom(Object? value) {
+  if (value is! Map) return const {};
+  final result = <String, dynamic>{};
+  value.forEach((key, raw) {
+    final name = key?.toString() ?? '';
+    if (name.isEmpty) return;
+    result[name] = _coerceScalar(raw);
+  });
+  return result;
+}
+
+Object? _coerceScalar(Object? raw) {
+  if (raw is! String) return raw;
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return raw;
+  if (trimmed == 'true') return true;
+  if (trimmed == 'false') return false;
+  final asInt = int.tryParse(trimmed);
+  if (asInt != null) return asInt;
+  final asDouble = double.tryParse(trimmed);
+  if (asDouble != null) return asDouble;
+  return raw;
 }

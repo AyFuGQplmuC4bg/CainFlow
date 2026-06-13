@@ -51,4 +51,25 @@ void main() {
     expect(document.canvas.y, -8);
     expect(document.canvas.zoom, 1.5);
   });
+
+  test('node data survives a workbench -> document -> workbench round trip', () {
+    final signals = WorkbenchSignals();
+    signals.updateNodeData('node_text_prompt', {'text': 'a prompt'});
+    signals.updateNodeData(
+      'node_image_generate',
+      {'apiConfigId': 'm1', 'size': '1024x1024'},
+    );
+
+    final document = workbenchSignalsToWorkflow(signals);
+    final genNode =
+        document.nodes.firstWhere((n) => n.id == 'node_image_generate');
+    expect(genNode.data['apiConfigId'], 'm1');
+    expect(genNode.data['size'], '1024x1024');
+
+    final restored = WorkbenchSignals();
+    applyWorkflowToWorkbench(restored, document);
+    final restoredText =
+        restored.nodes.value.firstWhere((n) => n.id == 'node_text_prompt');
+    expect(restoredText.data['text'], 'a prompt');
+  });
 }

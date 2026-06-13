@@ -40,6 +40,7 @@ FlowNode _nodeToFlowNode(WorkbenchNode node) {
     customTitle: node.title.isNotEmpty && node.title != node.type
         ? node.title
         : null,
+    data: node.data,
   );
 }
 
@@ -74,6 +75,7 @@ void applyWorkflowToWorkbench(
         title: node.title,
         x: node.x,
         y: node.y,
+        data: node.data,
       ),
   ];
   signals.connections.value = [

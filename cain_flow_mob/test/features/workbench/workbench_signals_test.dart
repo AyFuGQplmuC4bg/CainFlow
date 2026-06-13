@@ -19,4 +19,35 @@ void main() {
     expect(after.x, before.x + 24);
     expect(after.y, before.y - 8);
   });
+
+  test('node data round-trips through JSON and survives moveBy', () {
+    const node = WorkbenchNode(
+      id: 'n1',
+      type: 'TextChat',
+      title: 'Chat',
+      x: 10,
+      y: 20,
+      data: {'apiConfigId': 'm1', 'systemPrompt': 'be brief'},
+    );
+
+    final restored = WorkbenchNode.fromJson(node.toJson());
+    expect(restored.data['apiConfigId'], 'm1');
+    expect(restored.data['systemPrompt'], 'be brief');
+
+    final moved = node.moveBy(const NodeOffset(5, 5));
+    expect(moved.data['apiConfigId'], 'm1');
+  });
+
+  test('updateNodeData replaces the parameter map', () {
+    final state = WorkbenchSignals();
+    state.updateNodeData('node_text_prompt', {'text': 'hello'});
+    final node =
+        state.nodes.value.firstWhere((n) => n.id == 'node_text_prompt');
+    expect(node.data['text'], 'hello');
+  });
+
+  test('toJson omits empty data', () {
+    const node = WorkbenchNode(id: 'n', type: 'Text', title: 'T', x: 0, y: 0);
+    expect(node.toJson().containsKey('data'), isFalse);
+  });
 }

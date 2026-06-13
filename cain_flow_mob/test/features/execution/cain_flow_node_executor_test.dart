@@ -168,6 +168,36 @@ void main() {
       );
       expect(harness.logs.hasErrors.value, isTrue);
     });
+
+    test('forwards system prompt and coerced custom params', () async {
+      final harness = ExecutorHarness(
+        settings: chatSettings(),
+        responses: const [
+          FakeResponse(200, '{"choices":[{"message":{"content":"ok"}}]}'),
+        ],
+      );
+      final node = const FlowNode(
+        id: 'chatNode',
+        type: 'TextChat',
+        x: 0,
+        y: 0,
+        data: {
+          'systemPrompt': 'be terse',
+          'customParams': {'temperature': '0.7', 'stream': 'false'},
+        },
+      );
+
+      await harness.executor.execute(
+        node,
+        _context(inputs: {'prompt': 'hi'}),
+      );
+
+      final body = harness.client.requests.single.body;
+      final messages = body['messages'] as List;
+      expect(messages.first, {'role': 'system', 'content': 'be terse'});
+      expect(body['temperature'], 0.7);
+      expect(body['stream'], false);
+    });
   });
 
   group('ImageGenerate node', () {

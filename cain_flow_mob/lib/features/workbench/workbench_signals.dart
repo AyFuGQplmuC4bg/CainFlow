@@ -29,6 +29,7 @@ class WorkbenchNode {
     required this.title,
     required this.x,
     required this.y,
+    this.data = const {},
   });
 
   factory WorkbenchNode.fromJson(Map<String, dynamic> json) {
@@ -38,6 +39,9 @@ class WorkbenchNode {
       title: json['title']?.toString() ?? json['type']?.toString() ?? '',
       x: _numberFrom(json['x']),
       y: _numberFrom(json['y']),
+      data: json['data'] is Map
+          ? Map<String, dynamic>.from(json['data'] as Map)
+          : const {},
     );
   }
 
@@ -46,6 +50,7 @@ class WorkbenchNode {
   final String title;
   final double x;
   final double y;
+  final Map<String, dynamic> data;
 
   WorkbenchNode moveBy(NodeOffset offset) {
     return WorkbenchNode(
@@ -54,6 +59,18 @@ class WorkbenchNode {
       title: title,
       x: x + offset.dx,
       y: y + offset.dy,
+      data: data,
+    );
+  }
+
+  WorkbenchNode withData(Map<String, dynamic> newData) {
+    return WorkbenchNode(
+      id: id,
+      type: type,
+      title: title,
+      x: x,
+      y: y,
+      data: newData,
     );
   }
 
@@ -64,6 +81,7 @@ class WorkbenchNode {
       'title': title,
       'x': x,
       'y': y,
+      if (data.isNotEmpty) 'data': data,
     };
   }
 }
@@ -185,6 +203,14 @@ class WorkbenchSignals {
     nodes.value = [
       for (final node in nodes.value)
         if (node.id == nodeId) node.moveBy(offset) else node,
+    ];
+  }
+
+  /// Replaces the parameter map of [nodeId] with [data].
+  void updateNodeData(String nodeId, Map<String, dynamic> data) {
+    nodes.value = [
+      for (final node in nodes.value)
+        if (node.id == nodeId) node.withData(Map<String, dynamic>.from(data)) else node,
     ];
   }
 
