@@ -63,6 +63,17 @@ class WorkflowManager {
     refresh();
   }
 
+  /// Saves the current graph, reusing the active id or deriving one from the
+  /// workflow name (for a never-saved workflow). Returns the id used.
+  String save() {
+    final existing = activeWorkflowId.value;
+    final id = existing ??
+        _uniqueId(_slugify(workbench.activeWorkflowName.value,
+            fallback: 'workflow'));
+    saveActive(id);
+    return id;
+  }
+
   /// Creates an empty workflow, switching the workbench to it.
   String newWorkflow({String name = 'Untitled Workflow'}) {
     flushActive?.call();

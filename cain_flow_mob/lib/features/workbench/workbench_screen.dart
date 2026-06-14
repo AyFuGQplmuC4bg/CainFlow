@@ -144,9 +144,16 @@ class WorkbenchScreen extends SignalWidget {
           IconButton(
             tooltip: 'Save workflow',
             onPressed: () {
+              final id = workflowManager.save();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Saved "${state.activeWorkflowName.value}"'),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
               logSignals.add(
                 LogLevel.info,
-                'Workflow save requested',
+                'Workflow saved: $id',
                 scope: 'workbench',
               );
             },

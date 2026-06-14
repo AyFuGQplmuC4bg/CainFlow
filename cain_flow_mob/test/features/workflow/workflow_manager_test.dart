@@ -77,6 +77,25 @@ void main() {
     final names = manager.workflows.value.map((w) => w.name).toList();
     expect(names, containsAll(['Alpha', 'Beta']));
   });
+
+  test('save() derives an id for a never-saved workflow', () {
+    workbench.activeWorkflowName.value = 'My Draft';
+    final id = manager.save();
+    expect(id, 'my-draft');
+    expect(repository.listWorkflowIds(), contains('my-draft'));
+    expect(manager.activeWorkflowId.value, 'my-draft');
+  });
+
+  test('save() reuses the active id on subsequent saves', () {
+    final first = manager.newWorkflow(name: 'Doc');
+    workbench.updateNodeData(
+      workbench.addNode('Text'),
+      {'text': 'hi'},
+    );
+    final second = manager.save();
+    expect(second, first);
+    expect(repository.listWorkflowIds().where((i) => i == first).length, 1);
+  });
 }
 
 class _MemoryStore implements LocalKvStore {
