@@ -137,6 +137,14 @@ packages:
       url: "https://pub-web.flutter-io.cn"
     source: hosted
     version: "7.0.1"
+  file_picker:
+    dependency: "direct main"
+    description:
+      name: file_picker
+      sha256: "09b474c0c8117484b80cbebc043801ff91e05cfbd2874d512825c899e1754694"
+      url: "https://pub-web.flutter-io.cn"
+    source: hosted
+    version: "9.2.3"
   file_selector_linux:
     dependency: transitive
     description:
@@ -206,6 +214,11 @@ packages:
       url: "https://pub-web.flutter-io.cn"
     source: hosted
     version: "6.0.0"
+  flutter_localizations:
+    dependency: "direct main"
+    description: flutter
+    source: sdk
+    version: "0.0.0"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -328,6 +341,14 @@ packages:
       url: "https://pub-web.flutter-io.cn"
     source: hosted
     version: "0.2.2"
+  intl:
+    dependency: transitive
+    description:
+      name: intl
+      sha256: "3df61194eb431efc39c4ceba583b95633a403f46c9fd341e550ce0bfa50e9aa5"
+      url: "https://pub-web.flutter-io.cn"
+    source: hosted
+    version: "0.20.2"
   jni:
     dependency: transitive
     description:
@@ -774,7 +795,7 @@ packages:
     source: hosted
     version: "4.5.3"
   vector_math:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: vector_math
       sha256: d530bd74fea330e6e364cda7a85019c434070188383e1cd8d9777ee586914c5b
@@ -797,6 +818,14 @@ packages:
       url: "https://pub-web.flutter-io.cn"
     source: hosted
     version: "1.1.1"
+  win32:
+    dependency: transitive
+    description:
+      name: win32
+      sha256: d7cb55e04cd34096cd3a79b3330245f54cb96a370a1c27adb3c84b917de8b08e
+      url: "https://pub-web.flutter-io.cn"
+    source: hosted
+    version: "5.15.0"
   xdg_directories:
     dependency: transitive
     description:

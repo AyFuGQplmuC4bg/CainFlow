@@ -1,16 +1,32 @@
-import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../camera/camera_preview_3d.dart';
 import '../camera/camera_prompt.dart';
+import '../media/image_decoder.dart';
+import '../media/media_repository.dart';
 
 /// Full-screen editor for a CameraControl node's 5D viewpoint. Returns the
-/// updated camera data map (pitch/yaw/distance/fov/roll) on save, or null on
-/// cancel. Shows the generated prompt live as the sliders move.
+/// updated camera data map (pitch/yaw/distance/fov/roll, plus a `cameraPreview`
+/// snapshot payload) on save, or null on cancel. Shows a live 3D preview of the
+/// camera viewpoint and the generated prompt as the sliders move.
 class CameraEditorScreen extends StatefulWidget {
-  const CameraEditorScreen({super.key, required this.initial});
+  const CameraEditorScreen({
+    super.key,
+    required this.initial,
+    this.referenceImagePayload,
+    this.media,
+  });
 
   final CameraState initial;
+
+  /// Upstream image payload connected to the node's `image` port, projected
+  /// onto the preview billboard. Null when nothing is connected.
+  final Object? referenceImagePayload;
+
+  /// Used to resolve asset payloads to bytes. Null in tests/previews.
+  final MediaRepository? media;
 
   @override
   State<CameraEditorScreen> createState() => _CameraEditorScreenState();
@@ -18,11 +34,27 @@ class CameraEditorScreen extends StatefulWidget {
 
 class _CameraEditorScreenState extends State<CameraEditorScreen> {
   late CameraState _state;
+  ui.Image? _referenceImage;
 
   @override
   void initState() {
     super.initState();
     _state = widget.initial;
+    _loadReferenceImage();
+  }
+
+  Future<void> _loadReferenceImage() async {
+    final media = widget.media;
+    if (media == null || widget.referenceImagePayload == null) return;
+    final image = await decodeImagePayload(widget.referenceImagePayload, media);
+    if (!mounted || image == null) return;
+    setState(() => _referenceImage = image);
+  }
+
+  @override
+  void dispose() {
+    _referenceImage?.dispose();
+    super.dispose();
   }
 
   @override
@@ -41,7 +73,7 @@ class _CameraEditorScreenState extends State<CameraEditorScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilledButton(
-              onPressed: () => Navigator.of(context).pop(_state.toData()),
+              onPressed: _save,
               child: const Text('Save'),
             ),
           ),
@@ -50,7 +82,11 @@ class _CameraEditorScreenState extends State<CameraEditorScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _CameraDiagram(state: _state),
+          CameraPreview3D(
+            state: _state,
+            referenceImage: _referenceImage,
+            onStateChanged: (next) => setState(() => _state = next),
+          ),
           const SizedBox(height: 16),
           _slider(
             label: 'Pitch (俯仰)',
@@ -150,84 +186,57 @@ class _CameraEditorScreenState extends State<CameraEditorScreen> {
       ],
     );
   }
-}
 
-/// Lightweight 2D diagram: a top-down ring showing the camera's yaw position
-/// and a label for the resulting shot, giving quick spatial feedback without a
-/// full 3D engine.
-class _CameraDiagram extends StatelessWidget {
-  const _CameraDiagram({required this.state});
-
-  final CameraState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      height: 160,
-      child: CustomPaint(
-        painter: _DiagramPainter(
-          state: state,
-          subjectColor: theme.colorScheme.primary,
-          cameraColor: theme.colorScheme.secondary,
-          gridColor: theme.colorScheme.outlineVariant,
-        ),
-        child: const SizedBox.expand(),
-      ),
-    );
-  }
-}
-
-class _DiagramPainter extends CustomPainter {
-  _DiagramPainter({
-    required this.state,
-    required this.subjectColor,
-    required this.cameraColor,
-    required this.gridColor,
-  });
-
-  final CameraState state;
-  final Color subjectColor;
-  final Color cameraColor;
-  final Color gridColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final maxR = size.shortestSide / 2 - 16;
-
-    // Orbit ring.
-    final ring = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = gridColor;
-    canvas.drawCircle(center, maxR, ring);
-
-    // Subject at center.
-    canvas.drawCircle(center, 6, Paint()..color = subjectColor);
-
-    // Camera position from yaw + distance (top-down: yaw 0 = front/bottom).
-    final r = maxR *
-        ((state.distance - CameraLimits.distanceMin) /
-                (CameraLimits.distanceMax - CameraLimits.distanceMin))
-            .clamp(0.2, 1.0);
-    final yawRad = state.yaw * math.pi / 180;
-    final camPos = Offset(
-      center.dx + r * math.sin(yawRad),
-      center.dy + r * math.cos(yawRad),
-    );
-    // Line subject -> camera.
-    canvas.drawLine(
-      center,
-      camPos,
-      Paint()
-        ..color = cameraColor
-        ..strokeWidth = 2,
-    );
-    canvas.drawCircle(camPos, 7, Paint()..color = cameraColor);
+  /// Saves the camera data, attaching a `cameraPreview` asset payload rendered
+  /// off-screen from the current viewpoint so the node card can show it.
+  Future<void> _save() async {
+    final data = _state.toData();
+    final preview = await _captureSnapshotPayload();
+    if (preview != null) {
+      data['cameraPreview'] = preview;
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(data);
   }
 
-  @override
-  bool shouldRepaint(covariant _DiagramPainter old) =>
-      old.state.yaw != state.yaw || old.state.distance != state.distance;
+  /// Replays the live preview frame into an off-screen recorder and persists it
+  /// as a PNG asset, returning its payload (`{kind: asset, ...}`) or null.
+  Future<Map<String, dynamic>?> _captureSnapshotPayload() async {
+    final media = widget.media;
+    if (media == null) return null;
+    try {
+      const size = Size(360, 270);
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder, Offset.zero & size);
+      paintCameraScene(
+        canvas: canvas,
+        size: size,
+        state: _state,
+        referenceImage: _referenceImage,
+        palette: CameraPreviewPalette.dark,
+      );
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(size.width.toInt(), size.height.toInt());
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      picture.dispose();
+      image.dispose();
+      if (bytes == null) return null;
+      final asset = await media.saveBytes(
+        workflowId: '',
+        fileName: 'camera-preview.png',
+        mimeType: 'image/png',
+        bytes: bytes.buffer.asUint8List(),
+      );
+      return {
+        'kind': 'asset',
+        'assetId': asset.id,
+        'relativePath': asset.relativePath,
+        'thumbnailRelativePath': asset.thumbnailRelativePath,
+        'mimeType': asset.mimeType,
+        'byteLength': asset.byteLength,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
 }

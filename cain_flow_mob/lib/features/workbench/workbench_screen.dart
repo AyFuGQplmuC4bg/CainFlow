@@ -400,7 +400,7 @@ Future<void> _openNodeEditor(BuildContext context, String nodeId) async {
       models: models,
       onChanged: (data) => workbenchSignals.updateNodeData(nodeId, data),
       onPickImage: () => _pickAndStoreImage(),
-      onEditCamera: (current) => _editCamera(context, current),
+      onEditCamera: (current) => _editCamera(context, nodeId, current),
       onDelete: () {
         workbenchSignals.removeNode(nodeId);
         Navigator.of(sheetContext).pop();
@@ -410,15 +410,34 @@ Future<void> _openNodeEditor(BuildContext context, String nodeId) async {
 }
 
 /// Opens the full-screen camera viewpoint editor and returns updated data.
+/// Resolves the image connected to the node's `image` port so the editor can
+/// project it onto the live preview billboard.
 Future<Map<String, dynamic>?> _editCamera(
   BuildContext context,
+  String nodeId,
   Map<String, dynamic> current,
 ) {
   return Navigator.of(context).push<Map<String, dynamic>>(
     MaterialPageRoute(
-      builder: (_) => CameraEditorScreen(initial: CameraState.fromData(current)),
+      builder: (_) => CameraEditorScreen(
+        initial: CameraState.fromData(current),
+        referenceImagePayload: _resolveUpstreamImagePayload(nodeId, 'image'),
+        media: MediaRepository(store: _safeStore()),
+      ),
     ),
   );
+}
+
+/// Finds the image payload feeding [toPort] of [nodeId] by following the
+/// incoming connection to its source node's published image output. Mirrors
+/// the web `findConnectedInputImage`.
+Object? _resolveUpstreamImagePayload(String nodeId, String toPort) {
+  final connection = workbenchSignals.connections.value
+      .where((c) => c.toNodeId == nodeId && c.toPort == toPort)
+      .cast<WorkbenchConnection?>()
+      .firstWhere((c) => c != null, orElse: () => null);
+  if (connection == null) return null;
+  return executionSignals.imageOutputs.value[connection.fromNodeId];
 }
 
 /// Handles a port tap for point-select connections: an output port arms a
@@ -1123,7 +1142,7 @@ class _CanvasStage extends SignalWidget {
                   node: node,
                   definition: nodeRegistry.get(node.type),
                   selected: state.selectedNodeId.value == node.id,
-                  imagePayload: executionSignals.imageOutputs.value[node.id],
+                  imagePayload: _cardImagePayload(node),
                   runState:
                       executionSignals.nodeStates.value[node.id]?.state,
                   pollText: executionSignals.pollProgress.value[node.id],
@@ -1177,6 +1196,19 @@ class _CanvasStage extends SignalWidget {
         ],
       ),
     );
+  }
+
+  /// Image payload to preview on a node card: a CameraControl node prefers its
+  /// stored viewpoint snapshot (`data.cameraPreview`); all others fall back to
+  /// the live execution output.
+  Map<String, dynamic>? _cardImagePayload(WorkbenchNode node) {
+    if (node.type == 'CameraControl') {
+      final preview = node.data['cameraPreview'];
+      if (preview is Map) {
+        return Map<String, dynamic>.from(preview);
+      }
+    }
+    return executionSignals.imageOutputs.value[node.id];
   }
 }
 
