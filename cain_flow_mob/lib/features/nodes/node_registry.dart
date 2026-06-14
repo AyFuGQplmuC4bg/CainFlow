@@ -130,8 +130,11 @@ const nodeRegistry = NodeRegistry([
   NodeDefinition(
     type: 'ImagePreview',
     title: 'Image Preview',
-    description: 'Preview image output on the canvas.',
+    description: 'Preview image on the canvas and pass it downstream.',
     inputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
+    ],
+    outputPorts: [
       NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
     ],
   ),

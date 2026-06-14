@@ -44,5 +44,12 @@ void main() {
     expect(chat.containsKey('apiConfigId'), isFalse);
     expect(chat.containsKey('customParams'), isFalse);
   });
+
+  test('ImagePreview exposes an image output for chaining downstream', () {
+    final preview = nodeRegistry.get('ImagePreview')!;
+    expect(preview.inputPorts.single.name, 'image');
+    expect(preview.outputPorts.single.name, 'image');
+    expect(preview.outputPorts.single.type, 'image');
+  });
 }
 
