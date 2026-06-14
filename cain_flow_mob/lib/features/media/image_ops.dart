@@ -43,8 +43,56 @@ abstract final class ImageOps {
     return encodePng(result);
   }
 
-  /// Creates a thumbnail no larger than [maxSize] on its longest edge,
-  /// preserving aspect ratio.
+  /// Crops a rectangular region, clamped to the image bounds.
+  static Uint8List crop(
+    Uint8List bytes, {
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+  }) {
+    final src = decode(bytes);
+    final cx = x.clamp(0, src.width - 1);
+    final cy = y.clamp(0, src.height - 1);
+    final cw = width.clamp(1, src.width - cx);
+    final ch = height.clamp(1, src.height - cy);
+    return encodePng(img.copyCrop(src, x: cx, y: cy, width: cw, height: ch));
+  }
+
+  /// Draws annotation shapes onto [bytes] and returns a new PNG. Each shape is
+  /// `{type: rect|line, x1, y1, x2, y2, color}` with `color` an ARGB int.
+  static Uint8List annotate(
+    Uint8List bytes,
+    List<Map<String, dynamic>> shapes, {
+    int strokeColor = 0xFFFF3B30,
+    int thickness = 3,
+  }) {
+    final image = decode(bytes);
+    for (final shape in shapes) {
+      final type = shape['type']?.toString() ?? 'rect';
+      final x1 = (shape['x1'] as num?)?.round() ?? 0;
+      final y1 = (shape['y1'] as num?)?.round() ?? 0;
+      final x2 = (shape['x2'] as num?)?.round() ?? 0;
+      final y2 = (shape['y2'] as num?)?.round() ?? 0;
+      final argb = (shape['color'] as num?)?.toInt() ?? strokeColor;
+      final color = img.ColorUint32.rgba(
+        (argb >> 16) & 0xFF,
+        (argb >> 8) & 0xFF,
+        argb & 0xFF,
+        (argb >> 24) & 0xFF,
+      );
+      if (type == 'line') {
+        img.drawLine(image, x1: x1, y1: y1, x2: x2, y2: y2, color: color,
+            thickness: thickness);
+      } else {
+        img.drawRect(image, x1: x1, y1: y1, x2: x2, y2: y2, color: color,
+            thickness: thickness);
+      }
+    }
+    return encodePng(image);
+  }
+
+  /// Creates a thumbnail no larger than [maxSize] on its longest edge,  /// preserving aspect ratio.
   static Uint8List thumbnail(Uint8List bytes, {int maxSize = 256}) {
     final src = decode(bytes);
     final longest = src.width >= src.height ? src.width : src.height;

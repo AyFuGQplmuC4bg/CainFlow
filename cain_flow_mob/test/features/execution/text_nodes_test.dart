@@ -64,8 +64,7 @@ void main() {
     });
   });
 
-  group('TextSplit', () {
-    test('splits input into part_1..3 by separator', () async {
+  group('TextSplit', () {    test('splits input into part_1..3 by separator', () async {
       final node = const FlowNode(
         id: 's',
         type: 'TextSplit',
@@ -97,6 +96,32 @@ void main() {
       expect(result.outputs['part_1'], 'only');
       expect(result.outputs['part_2'], '');
       expect(result.outputs['part_3'], '');
+    });
+  });
+
+  group('CameraControl', () {
+    test('builds a shot prompt from shot and movement params', () async {
+      final node = const FlowNode(
+        id: 'cam',
+        type: 'CameraControl',
+        x: 0,
+        y: 0,
+        data: {'shot': 'close-up', 'movement': 'zoom in'},
+      );
+      final result = await _executor().execute(node, _context());
+      expect(result.outputs['text'], 'close-up shot, zoom in camera movement');
+    });
+
+    test('omits movement when static', () async {
+      final node = const FlowNode(
+        id: 'cam',
+        type: 'CameraControl',
+        x: 0,
+        y: 0,
+        data: {'shot': 'wide', 'movement': 'static'},
+      );
+      final result = await _executor().execute(node, _context());
+      expect(result.outputs['text'], 'wide shot');
     });
   });
 }

@@ -115,6 +115,44 @@ void main() {
     final out = await decodeOutput(result.outputs['image'] as Map<String, dynamic>);
     expect(out.width > out.height, isTrue);
   });
+
+  test('ImageCrop returns the requested region', () async {
+    final input = await assetPayload(100, 80);
+    final result = await executor.execute(
+      const FlowNode(
+        id: 'crop',
+        type: 'ImageCrop',
+        x: 0,
+        y: 0,
+        data: {'x': 10, 'y': 10, 'width': 40, 'height': 30},
+      ),
+      ctx({'image': input}),
+    );
+    final out = await decodeOutput(result.outputs['image'] as Map<String, dynamic>);
+    expect(out.width, 40);
+    expect(out.height, 30);
+  });
+
+  test('ImageAnnotate keeps the image dimensions', () async {
+    final input = await assetPayload(60, 60);
+    final result = await executor.execute(
+      const FlowNode(
+        id: 'ann',
+        type: 'ImageAnnotate',
+        x: 0,
+        y: 0,
+        data: {
+          'shapes': [
+            {'type': 'rect', 'x1': 5, 'y1': 5, 'x2': 40, 'y2': 40},
+          ],
+        },
+      ),
+      ctx({'image': input}),
+    );
+    final out = await decodeOutput(result.outputs['image'] as Map<String, dynamic>);
+    expect(out.width, 60);
+    expect(out.height, 60);
+  });
 }
 
 class _NoopClient implements ProviderClient {

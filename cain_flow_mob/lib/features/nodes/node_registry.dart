@@ -254,6 +254,69 @@ const nodeRegistry = NodeRegistry([
     ],
   ),
   NodeDefinition(
+    type: 'ImageCrop',
+    title: 'Image Crop',
+    description: 'Crop a rectangular region of an image.',
+    inputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
+    ],
+    params: [
+      NodeParamDefinition(name: 'x', label: 'X', control: NodeParamControl.number, defaultValue: 0),
+      NodeParamDefinition(name: 'y', label: 'Y', control: NodeParamControl.number, defaultValue: 0),
+      NodeParamDefinition(name: 'width', label: 'Width', control: NodeParamControl.number, defaultValue: 256),
+      NodeParamDefinition(name: 'height', label: 'Height', control: NodeParamControl.number, defaultValue: 256),
+    ],
+  ),
+  NodeDefinition(
+    type: 'ImageAnnotate',
+    title: 'Image Annotate',
+    description: 'Draw shapes (JSON) onto an image.',
+    inputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'shapes',
+        label: 'Shapes',
+        control: NodeParamControl.customParams,
+        hint: '[{"type":"rect","x1":10,"y1":10,"x2":80,"y2":80}]',
+      ),
+    ],
+  ),
+  NodeDefinition(
+    type: 'CameraControl',
+    title: 'Camera Control',
+    description: 'Builds a camera/shot prompt from settings and a reference.',
+    inputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Reference'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'text', type: 'text', label: 'Prompt'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'shot',
+        label: 'Shot',
+        control: NodeParamControl.select,
+        options: ['wide', 'medium', 'close-up', 'aerial', 'low angle'],
+        defaultValue: 'medium',
+      ),
+      NodeParamDefinition(
+        name: 'movement',
+        label: 'Movement',
+        control: NodeParamControl.select,
+        options: ['static', 'pan', 'zoom in', 'zoom out', 'dolly', 'orbit'],
+        defaultValue: 'static',
+      ),
+    ],
+  ),
+  NodeDefinition(
     type: 'ControlCondition',
     title: 'Condition',
     description: 'Routes input to the true or false branch by a comparison.',

@@ -68,4 +68,28 @@ void main() {
     final decoded = img.decodePng(out)!;
     expect(decoded.width > decoded.height, isTrue);
   });
+
+  test('crop returns the requested region clamped to bounds', () {
+    final out = ImageOps.crop(solid(100, 80), x: 10, y: 10, width: 40, height: 30);
+    final decoded = img.decodePng(out)!;
+    expect(decoded.width, 40);
+    expect(decoded.height, 30);
+  });
+
+  test('crop clamps oversized regions to the image', () {
+    final out = ImageOps.crop(solid(50, 50), x: 40, y: 40, width: 100, height: 100);
+    final decoded = img.decodePng(out)!;
+    expect(decoded.width, 10);
+    expect(decoded.height, 10);
+  });
+
+  test('annotate returns a same-size image with shapes drawn', () {
+    final out = ImageOps.annotate(solid(60, 60), [
+      {'type': 'rect', 'x1': 5, 'y1': 5, 'x2': 40, 'y2': 40},
+      {'type': 'line', 'x1': 0, 'y1': 0, 'x2': 59, 'y2': 59},
+    ]);
+    final decoded = img.decodePng(out)!;
+    expect(decoded.width, 60);
+    expect(decoded.height, 60);
+  });
 }

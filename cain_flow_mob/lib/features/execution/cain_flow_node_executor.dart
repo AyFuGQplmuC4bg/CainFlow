@@ -49,6 +49,12 @@ class CainFlowNodeExecutor implements NodeExecutor {
         return _executeImageMerge(node, context);
       case 'ImageCompare':
         return _executeImageCompare(node, context);
+      case 'ImageCrop':
+        return _executeImageCrop(node, context);
+      case 'ImageAnnotate':
+        return _executeImageAnnotate(node, context);
+      case 'CameraControl':
+        return _executeCameraControl(node, context);
       case 'ImageSave':
         return _executeImageSave(node, context);
       case 'ControlCondition':
@@ -241,6 +247,57 @@ class CainFlowNodeExecutor implements NodeExecutor {
     final out = ImageOps.compare(a, b);
     final payload = await _saveImageBytes(out, fileNameSeed: '${node.id}-compare');
     return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
+  }
+
+  /// Crops the input image to the configured rectangle.
+  Future<NodeExecutionResult> _executeImageCrop(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) async {
+    final bytes = await _loadImageBytes(context.inputs['image']);
+    final out = ImageOps.crop(
+      bytes,
+      x: _intFrom(node.data['x']) ?? 0,
+      y: _intFrom(node.data['y']) ?? 0,
+      width: _intFrom(node.data['width']) ?? 256,
+      height: _intFrom(node.data['height']) ?? 256,
+    );
+    final payload = await _saveImageBytes(out, fileNameSeed: '${node.id}-crop');
+    return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
+  }
+
+  /// Draws annotation shapes (from the `shapes` JSON param) onto the image.
+  Future<NodeExecutionResult> _executeImageAnnotate(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) async {
+    final bytes = await _loadImageBytes(context.inputs['image']);
+    final raw = node.data['shapes'];
+    final shapes = <Map<String, dynamic>>[];
+    if (raw is List) {
+      for (final s in raw) {
+        if (s is Map) shapes.add(Map<String, dynamic>.from(s));
+      }
+    }
+    final out = ImageOps.annotate(bytes, shapes);
+    final payload =
+        await _saveImageBytes(out, fileNameSeed: '${node.id}-annotate');
+    return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
+  }
+
+  /// Builds a camera/shot prompt string from the node's shot + movement params.
+  NodeExecutionResult _executeCameraControl(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) {
+    final shot = _stringFrom(node.data['shot']) ?? 'medium';
+    final movement = _stringFrom(node.data['movement']) ?? 'static';
+    final parts = <String>['$shot shot'];
+    if (movement != 'static') parts.add('$movement camera movement');
+    return NodeExecutionResult(
+      nodeId: node.id,
+      outputs: {'text': parts.join(', ')},
+    );
   }
 
   /// Resolves an image payload (`{kind: asset|url|b64}`) into raw bytes.
