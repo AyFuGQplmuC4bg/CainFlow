@@ -435,6 +435,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       'kind': 'asset',
       'assetId': asset.id,
       'relativePath': asset.relativePath,
+      'thumbnailRelativePath': asset.thumbnailRelativePath,
       'mimeType': asset.mimeType,
       'byteLength': asset.byteLength,
     };

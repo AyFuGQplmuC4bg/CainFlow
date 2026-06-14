@@ -31,7 +31,11 @@ class NodeImageThumbnail extends StatelessWidget {
     }
 
     if (kind == 'asset') {
-      final relativePath = payload['relativePath']?.toString() ?? '';
+      // Prefer the generated thumbnail; fall back to the full asset.
+      final relativePath = (payload['thumbnailRelativePath']?.toString() ?? '')
+              .isNotEmpty
+          ? payload['thumbnailRelativePath'].toString()
+          : payload['relativePath']?.toString() ?? '';
       if (relativePath.isEmpty) return _placeholder(context);
       return _box(
         FutureBuilder<File?>(

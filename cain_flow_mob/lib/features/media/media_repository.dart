@@ -12,7 +12,7 @@ import 'thumbnail_service.dart';
 class MediaRepository {
   MediaRepository({
     required this.store,
-    this.thumbnailService = const PassthroughThumbnailService(),
+    this.thumbnailService = const ImageThumbnailService(),
     Directory? mediaRoot,
     DateTime Function()? now,
   }) : _mediaRootOverride = mediaRoot,
