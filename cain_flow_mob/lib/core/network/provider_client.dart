@@ -150,8 +150,15 @@ class DartIoProviderClient implements ProviderClient {
       httpRequest.headers.set(key, value);
     });
 
-    final payload = utf8.encode(jsonEncode(request.body));
-    httpRequest.add(payload);
+    // Only write a body for methods that carry one. GET/HEAD requests default
+    // to contentLength 0, so writing even an empty `{}` (2 bytes) throws
+    // "Content size exceeds specified contentLength".
+    final method = request.method.toUpperCase();
+    final bodyless = method == 'GET' || method == 'HEAD' || method == 'DELETE';
+    if (!bodyless && request.body.isNotEmpty) {
+      final payload = utf8.encode(jsonEncode(request.body));
+      httpRequest.add(payload);
+    }
 
     final httpResponse = await httpRequest.close();
     token?.throwIfCanceled();

@@ -46,6 +46,34 @@ void main() {
     expect(receivedBody, contains('"model":"gpt-4.1"'));
   });
 
+  test('GET request sends no body and succeeds (no contentLength error)',
+      () async {
+    server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    int? receivedContentLength;
+    String? receivedBody;
+    server.listen((req) async {
+      receivedContentLength = req.contentLength;
+      receivedBody = await utf8.decoder.bind(req).join();
+      req.response
+        ..statusCode = 200
+        ..write('{"data":[]}');
+      await req.response.close();
+    });
+
+    final request = ProviderRequest(
+      url: 'http://${server.address.host}:${server.port}/v1/models',
+      method: 'GET',
+      headers: const {'Accept': 'application/json'},
+      body: const {},
+    );
+
+    final response = await DartIoProviderClient().send(request);
+
+    expect(response.statusCode, 200);
+    expect(receivedBody, isEmpty);
+    expect(receivedContentLength, anyOf(0, -1));
+  });
+
   test('maps a slow response to a sanitized timeout error', () async {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((req) async {
