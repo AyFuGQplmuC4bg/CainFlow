@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:signals/signals_flutter.dart';
 
+import '../../app/theme/cain_tokens.dart';
+
 import '../execution/cain_flow_node_executor.dart';
 import '../execution/execution_services.dart';
 import '../execution/execution_signals.dart';
@@ -107,20 +109,39 @@ class WorkbenchScreen extends SignalWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final state = workbenchSignals;
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('CainFlow'),
-            Text(
-              state.activeWorkflowName.value,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            // Phosphor mark before the wordmark, like an instrument power LED.
+            Container(
+              width: 9,
+              height: 9,
+              margin: const EdgeInsets.only(right: 10, top: 2),
+              decoration: BoxDecoration(
+                color: CainTokens.phosphor,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: CainTokens.phosphor.withValues(alpha: 0.7),
+                    blurRadius: 8,
+                  ),
+                ],
               ),
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('CAINFLOW'),
+                Text(
+                  state.activeWorkflowName.value,
+                  style: CainTokens.mono(10.5, color: CainTokens.inkFaint),
+                ),
+              ],
             ),
           ],
         ),
@@ -473,14 +494,21 @@ class _WorkflowRail extends SignalWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final state = workbenchSignals;
+    final manager = workflowManager;
+
+    // Read every signal here, in SignalWidget.build, so the rail re-renders on
+    // change. LayoutBuilder.builder runs outside SignalWidget's tracking scope,
+    // so signals read only inside it would not trigger rebuilds.
+    final activeId = manager.activeWorkflowId.value;
+    final workflows = manager.workflows.value;
+    final activeName = state.activeWorkflowName.value;
+    final graphSummary = state.graphSummary.value;
 
     return ColoredBox(
-      color: theme.colorScheme.surface,
+      color: CainTokens.panel,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isCompact = constraints.maxHeight < 260;
-          final manager = workflowManager;
-          final activeId = manager.activeWorkflowId.value;
           final content = [
             Text('Workflows', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
@@ -498,15 +526,15 @@ class _WorkflowRail extends SignalWidget {
             const SizedBox(height: 8),
             // Active (possibly unsaved) workflow.
             _WorkflowTile(
-              title: state.activeWorkflowName.value,
-              subtitle: state.graphSummary.value,
+              title: activeName,
+              subtitle: graphSummary,
               selected: true,
               onLongPress: activeId == null
                   ? null
                   : () => _workflowActions(context, activeId),
             ),
             // Other saved workflows.
-            for (final wf in manager.workflows.value)
+            for (final wf in workflows)
               if (wf.id != activeId) ...[
                 const SizedBox(height: 8),
                 _WorkflowTile(
@@ -636,6 +664,7 @@ class _CanvasStage extends SignalWidget {
                   ? '${executionSignals.completedCount.value}/'
                       '${executionSignals.totalCount.value}'
                   : state.graphSummary.value,
+              color: _statusColor(executionSignals.workflowState.value),
             ),
           ),
           const Positioned(
@@ -669,7 +698,6 @@ class _RunTimerOverlay extends SignalWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final running = executionSignals.isRunning.value;
     // Build nothing when idle so no infinite spinner animation lingers.
     if (!running) return const SizedBox.shrink();
@@ -681,45 +709,60 @@ class _RunTimerOverlay extends SignalWidget {
         : '${(elapsed.inMilliseconds / 1000).toStringAsFixed(1)}s';
 
     return DecoratedBox(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
+      decoration: BoxDecoration(
+        color: CainTokens.void0.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: CainTokens.phosphorDim),
+        boxShadow: [
+          BoxShadow(
+            color: CainTokens.phosphor.withValues(alpha: 0.18),
+            blurRadius: 22,
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 7, 7, 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 13,
+              height: 13,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(CainTokens.phosphor),
               ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  seconds,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontFeatures: const [],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: () => workbenchExecutionController.stop(),
-                  icon: const Icon(Icons.stop_rounded, size: 18),
-                  label: const Text('取消'),
-                ),
-              ],
             ),
-          ),
-        );
+            const SizedBox(width: 10),
+            Text(
+              'RUN',
+              style: CainTokens.mono(
+                10,
+                color: CainTokens.phosphorDim,
+                weight: FontWeight.w700,
+                spacing: 1.5,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              seconds,
+              style: CainTokens.mono(
+                14,
+                color: CainTokens.phosphor,
+                weight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 6),
+            TextButton.icon(
+              onPressed: () => workbenchExecutionController.stop(),
+              style: TextButton.styleFrom(foregroundColor: CainTokens.danger),
+              icon: const Icon(Icons.stop_rounded, size: 18),
+              label: const Text('取消'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -733,7 +776,7 @@ class _InspectorRail extends SignalWidget {
     final selected = state.selectedNode.value;
 
     return ColoredBox(
-      color: theme.colorScheme.surface,
+      color: CainTokens.panel,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -793,44 +836,63 @@ class _WorkflowTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: selected
-            ? theme.colorScheme.primary.withValues(alpha: 0.12)
-            : theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary
-              : theme.colorScheme.outlineVariant,
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.account_tree_outlined),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? CainTokens.phosphorGlow : CainTokens.panelHigh,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: selected ? CainTokens.phosphor : CainTokens.panelEdge,
+            width: selected ? 1.5 : 1,
           ),
-        ],
-      ),
+        ),
+        child: Row(
+          children: [
+            // Accent strip standing in for a left edge marker.
+            Container(
+              width: 3,
+              height: 30,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: selected ? CainTokens.phosphor : CainTokens.panelEdge,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Icon(
+              Icons.account_tree_outlined,
+              size: 18,
+              color: selected ? CainTokens.phosphor : CainTokens.inkDim,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: CainTokens.display(
+                      13,
+                      weight: FontWeight.w600,
+                      color: selected ? CainTokens.phosphor : CainTokens.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: CainTokens.mono(10, color: CainTokens.inkFaint),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -849,13 +911,11 @@ class _CanvasControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+        color: CainTokens.void0.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: CainTokens.panelEdge),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -863,19 +923,20 @@ class _CanvasControls extends StatelessWidget {
           IconButton(
             tooltip: 'Zoom out',
             onPressed: onZoomOut,
-            icon: const Icon(Icons.remove_rounded),
+            icon: const Icon(Icons.remove_rounded, size: 18),
           ),
           SizedBox(
-            width: 56,
+            width: 52,
             child: Text(
               '${(zoom * 100).round()}%',
               textAlign: TextAlign.center,
+              style: CainTokens.mono(11.5, color: CainTokens.phosphor),
             ),
           ),
           IconButton(
             tooltip: 'Zoom in',
             onPressed: onZoomIn,
-            icon: const Icon(Icons.add_rounded),
+            icon: const Icon(Icons.add_rounded, size: 18),
           ),
         ],
       ),
@@ -905,27 +966,58 @@ class _RailAction extends StatelessWidget {
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, required this.value});
+  const _StatusChip({required this.label, required this.value, this.color});
 
   final String label;
   final String value;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    final led = color ?? CainTokens.phosphor;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+        color: CainTokens.void0.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: CainTokens.panelEdge),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Text('$label - $value'),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: led,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: led.withValues(alpha: 0.7), blurRadius: 6),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$label - $value',
+              style: CainTokens.mono(11.5, color: CainTokens.inkDim, spacing: 0.4),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+/// Status LED color for the bottom-left readout.
+Color _statusColor(WorkflowExecutionState state) {
+  return switch (state) {
+    WorkflowExecutionState.running => CainTokens.phosphor,
+    WorkflowExecutionState.completed => CainTokens.ok,
+    WorkflowExecutionState.failed => CainTokens.danger,
+    WorkflowExecutionState.canceled => CainTokens.signalControl,
+    WorkflowExecutionState.idle => CainTokens.idle,
+  };
 }
 
 String _executionStatusLabel(WorkflowExecutionState state) {
@@ -1014,17 +1106,46 @@ class _WorkbenchGrid extends StatelessWidget {
 class _WorkbenchGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF252B30)
-      ..strokeWidth = 1;
-    const gap = 28.0;
+    // Oscilloscope grid: fine minor lines every 28px, brighter major lines
+    // every 5th cell, plus a faint corner vignette for instrument depth.
+    const minorGap = 28.0;
+    const majorEvery = 5;
 
-    for (var x = 0.0; x <= size.width; x += gap) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    final minor = Paint()
+      ..color = CainTokens.gridMinor
+      ..strokeWidth = 1;
+    final major = Paint()
+      ..color = CainTokens.gridMajor
+      ..strokeWidth = 1;
+
+    var i = 0;
+    for (var x = 0.0; x <= size.width; x += minorGap, i++) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        i % majorEvery == 0 ? major : minor,
+      );
     }
-    for (var y = 0.0; y <= size.height; y += gap) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    i = 0;
+    for (var y = 0.0; y <= size.height; y += minorGap, i++) {
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(size.width, y),
+        i % majorEvery == 0 ? major : minor,
+      );
     }
+
+    // Subtle phosphor vignette from the bottom-left, like a CRT corner glow.
+    final glow = Paint()
+      ..shader = RadialGradient(
+        colors: [CainTokens.phosphorGlow, Colors.transparent],
+      ).createShader(
+        Rect.fromCircle(
+          center: Offset(size.width * 0.18, size.height * 0.92),
+          radius: size.shortestSide * 0.7,
+        ),
+      );
+    canvas.drawRect(Offset.zero & size, glow);
   }
 
   @override

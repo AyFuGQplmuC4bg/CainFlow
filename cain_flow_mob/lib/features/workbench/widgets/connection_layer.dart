@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/cain_tokens.dart';
 import '../../nodes/node_registry.dart';
 import '../workbench_signals.dart';
 import 'node_card.dart';
@@ -30,8 +31,8 @@ class ConnectionLayer extends StatelessWidget {
         connections: connections,
         imageOutputs: imageOutputs,
         zoom: zoom,
-        textColor: Theme.of(context).colorScheme.secondary,
-        imageColor: Theme.of(context).colorScheme.primary,
+        textColor: CainTokens.signalText,
+        imageColor: CainTokens.signalImage,
       ),
     );
   }
@@ -102,13 +103,30 @@ class _ConnectionPainter extends CustomPainter {
           end.dx,
           end.dy,
         );
-      final paint = Paint()
-        ..color = connection.type == 'image' ? imageColor : textColor
-        ..strokeWidth = 2
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round;
+      final signalColor = connection.type == 'image' ? imageColor : textColor;
 
-      canvas.drawPath(path, paint);
+      // Glow underlay, then crisp trace, then bright solder pads at each end —
+      // a signal wire on a schematic.
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = signalColor.withValues(alpha: 0.22)
+          ..strokeWidth = 6
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+      );
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = signalColor
+          ..strokeWidth = 1.6
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round,
+      );
+      for (final p in [start, end]) {
+        canvas.drawCircle(p, 3, Paint()..color = signalColor);
+      }
     }
   }
 

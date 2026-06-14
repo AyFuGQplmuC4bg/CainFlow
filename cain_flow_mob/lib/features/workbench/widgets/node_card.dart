@@ -1,12 +1,32 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/cain_tokens.dart';
 import '../../execution/execution_signals.dart';
 import '../../nodes/node_definition.dart';
 import '../workbench_signals.dart';
 import 'node_image_thumbnail.dart';
 
 /// Base card size for a node with up to two ports and no thumbnail.
-const workbenchNodeSize = Size(220, 150);
+const workbenchNodeSize = Size(224, 152);
+
+/// Maps a node type to its silkscreen band color + short code, grouping by
+/// the kind of data the node deals in (text / image / control).
+({Color color, String code}) _nodeBadge(String type) {
+  if (type.startsWith('Control')) {
+    return (color: CainTokens.signalControl, code: _code(type));
+  }
+  if (type.startsWith('Image') || type == 'CameraControl') {
+    return (color: CainTokens.signalImage, code: _code(type));
+  }
+  return (color: CainTokens.signalText, code: _code(type));
+}
+
+/// A 2-3 char silkscreen code derived from the type's capital letters.
+String _code(String type) {
+  final caps = type.replaceAll(RegExp('[^A-Z]'), '');
+  if (caps.length >= 2) return caps.substring(0, caps.length.clamp(0, 3));
+  return type.substring(0, type.length.clamp(0, 3)).toUpperCase();
+}
 
 /// Fixed height of a single port row, so connection anchors can be computed
 /// deterministically without measuring the rendered widget.
@@ -110,6 +130,7 @@ class NodeCard extends StatelessWidget {
         ? theme.colorScheme.primary
         : (runColor ?? theme.colorScheme.outlineVariant);
     final borderWidth = selected || runColor != null ? 2.0 : 1.0;
+    final badge = _nodeBadge(node.type);
 
     return GestureDetector(
       onTap: () {
@@ -127,74 +148,136 @@ class NodeCard extends StatelessWidget {
             duration: const Duration(milliseconds: 120),
             width: workbenchNodeSize.width,
             height: cardHeight,
-            padding: const EdgeInsets.all(_kCardPadding),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
+              color: CainTokens.panelHigh,
+              borderRadius: BorderRadius.circular(4),
               border: Border.all(color: borderColor, width: borderWidth),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 18,
-                  offset: const Offset(0, 10),
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
                 ),
                 if (selected)
                   BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.24),
-                    blurRadius: 22,
+                    color: CainTokens.phosphor.withValues(alpha: 0.28),
+                    blurRadius: 20,
                   )
                 else if (runState == NodeRunState.running)
                   BoxShadow(
-                    color: (runColor ?? theme.colorScheme.primary)
-                        .withValues(alpha: 0.4),
+                    color: (runColor ?? CainTokens.phosphor)
+                        .withValues(alpha: 0.45),
                     blurRadius: 22,
                   ),
               ],
             ),
+            clipBehavior: Clip.antiAlias,
             child: Opacity(
               opacity: runState == NodeRunState.skipped ? 0.5 : 1,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(node.title, style: theme.textTheme.titleSmall),
-                  const SizedBox(height: 6),
-                  Text(
-                    pollText ?? definition?.description ?? node.type,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: pollText != null
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
+                  // Silkscreen header band: type code chip + title.
+                  Container(
+                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: badge.color.withValues(alpha: 0.12),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: badge.color.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: badge.color.withValues(alpha: 0.22),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          child: Text(
+                            badge.code,
+                            style: CainTokens.mono(
+                              9.5,
+                              weight: FontWeight.w700,
+                              color: badge.color,
+                              spacing: 0.6,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            node.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: CainTokens.display(
+                              12.5,
+                              weight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  if (imagePayload != null) ...[
-                    const SizedBox(height: 8),
-                    NodeImageThumbnail(payload: imagePayload!, size: 48),
-                  ],
-                  const Spacer(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _PortCluster(
-                        ports: definition?.inputPorts ?? const [],
-                        fallbackLabel: 'in',
-                        color: theme.colorScheme.secondary,
-                        onPortTap: onPortTap == null
-                            ? null
-                            : (port) => onPortTap!(port, false),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        _kCardPadding,
+                        8,
+                        _kCardPadding,
+                        _kCardPadding,
                       ),
-                      _PortCluster(
-                        ports: definition?.outputPorts ?? const [],
-                        fallbackLabel: 'out',
-                        color: theme.colorScheme.primary,
-                        reverse: true,
-                        pendingPort: pendingFromPort,
-                        onPortTap: onPortTap == null
-                            ? null
-                            : (port) => onPortTap!(port, true),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            pollText ?? definition?.description ?? node.type,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: CainTokens.mono(
+                              10.5,
+                              color: pollText != null
+                                  ? CainTokens.phosphor
+                                  : CainTokens.inkFaint,
+                            ),
+                          ),
+                          if (imagePayload != null) ...[
+                            const SizedBox(height: 8),
+                            NodeImageThumbnail(payload: imagePayload!, size: 48),
+                          ],
+                          const Spacer(),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _PortCluster(
+                                ports: definition?.inputPorts ?? const [],
+                                fallbackLabel: 'in',
+                                color: CainTokens.signalText,
+                                onPortTap: onPortTap == null
+                                    ? null
+                                    : (port) => onPortTap!(port, false),
+                              ),
+                              _PortCluster(
+                                ports: definition?.outputPorts ?? const [],
+                                fallbackLabel: 'out',
+                                color: CainTokens.signalText,
+                                reverse: true,
+                                pendingPort: pendingFromPort,
+                                onPortTap: onPortTap == null
+                                    ? null
+                                    : (port) => onPortTap!(port, true),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -213,10 +296,10 @@ class NodeCard extends StatelessWidget {
 
   static Color? _runStateColor(ThemeData theme, NodeRunState? state) {
     return switch (state) {
-      NodeRunState.running => const Color(0xFF22D3EE), // cyan
-      NodeRunState.completed => const Color(0xFF10B981), // green
-      NodeRunState.failed => theme.colorScheme.error,
-      NodeRunState.skipped => theme.colorScheme.outlineVariant,
+      NodeRunState.running => CainTokens.phosphor,
+      NodeRunState.completed => CainTokens.ok,
+      NodeRunState.failed => CainTokens.danger,
+      NodeRunState.skipped => CainTokens.idle,
       _ => null,
     };
   }
@@ -327,13 +410,20 @@ class _PortRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Type-colored solder pad: a ring with a darker core, glowing when armed.
+    final portColor = port.type == 'image'
+        ? CainTokens.signalImage
+        : CainTokens.signalText;
     final dot = Container(
-      width: armed ? 13 : 9,
-      height: armed ? 13 : 9,
+      width: armed ? 14 : 11,
+      height: armed ? 14 : 11,
       decoration: BoxDecoration(
-        color: color,
+        color: CainTokens.void0,
         shape: BoxShape.circle,
-        border: armed ? Border.all(color: Colors.white, width: 2) : null,
+        border: Border.all(color: portColor, width: armed ? 2.5 : 2),
+        boxShadow: armed
+            ? [BoxShadow(color: portColor.withValues(alpha: 0.6), blurRadius: 8)]
+            : null,
       ),
     );
     final text = Flexible(
@@ -342,6 +432,7 @@ class _PortRow extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         textAlign: reverse ? TextAlign.end : TextAlign.start,
+        style: CainTokens.mono(9.5, color: CainTokens.inkDim, spacing: 0.3),
       ),
     );
 

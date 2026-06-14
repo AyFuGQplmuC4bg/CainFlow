@@ -9,7 +9,7 @@ void main() {
   testWidgets('renders CainFlow workbench shell', (tester) async {
     await tester.pumpWidget(const CainFlowApp());
 
-    expect(find.text('CainFlow'), findsOneWidget);
+    expect(find.text('CAINFLOW'), findsOneWidget);
     expect(find.text('Untitled Workflow'), findsAtLeastNWidgets(1));
     expect(find.text('Workflows'), findsOneWidget);
     expect(find.text('Image Generate'), findsOneWidget);
