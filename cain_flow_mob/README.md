@@ -13,22 +13,49 @@ first serial execution engine without a Python service or WebView wrapper.
 - Direct OpenAI-compatible and Gemini request builders.
 - Real `dart:io` HTTP provider client with timeout, cancellation, and a
   transient-only retry wrapper.
-- Concrete node executor for `Text`, `TextChat`, `ImageGenerate`,
-  `ImageImport`, `ImagePreview`, and `ImageSave`.
+- Concrete node executor for text, image, control-flow, and utility nodes
+  (see **Node Reference** below).
 - Mobile-friendly graph editing: add nodes (picker), point-select connections
   with type/cycle validation, edit parameters in a bottom sheet, and delete
   nodes/connections.
+- Undo/redo over graph structure and parameters.
 - Per-node model selection and custom JSON params injected into requests.
 - Async image protocol (`newApiImageAsync`): submit → poll → resolve URL, with
   configurable poll interval, timeout, and cancellation.
-- Image import from the device gallery and on-canvas thumbnails (local files via
-  `Image.file`, remote URLs via `cached_network_image`).
+- Concurrent execution (configurable `maxConcurrency`) plus a separate
+  iterative engine for control-flow graphs (condition/loop, bounded steps).
+- Multi-reference images and masks for `TextChat`/`ImageGenerate`; remote
+  result download to local assets.
+- Local image processing via the `image` package: resize, merge, compare,
+  crop, annotate, and real downscaled thumbnails.
+- TextChat streaming responses (SSE accumulation).
+- Execution history, prompt library, and per-day request statistics.
+- Config ZIP export/import (providers, models, settings, workflows) and
+  provider health checks with model listing.
+- Image import from the device gallery and on-canvas thumbnails (local files
+  via `Image.file`, remote URLs via `cached_network_image`).
 - Lightweight multi-workflow management: create, switch, rename, delete.
-- Run/Stop wired to the real serial workflow runner with canvas and inspector
-  status.
+- Run/Stop wired to the real workflow runner with canvas and inspector status.
 - Local media repository that stores bytes as app files and keeps only metadata
   in MMKV.
 - Editable provider/model settings and persisted, sanitized logs.
+
+## Node Reference
+
+- **Text** — static prompt text.
+- **TextMerge / TextSplit** — concatenate / split text by a separator.
+- **TextChat** — chat completion (OpenAI/Gemini), system prompt, vision
+  reference images, custom params, optional streaming.
+- **ImageImport** — pick a device image into a local asset.
+- **ImageGenerate** — text-to-image with reference images + mask; supports the
+  async protocol.
+- **ImageResize / ImageMerge / ImageCompare / ImageCrop / ImageAnnotate** —
+  local image processing.
+- **ImagePreview** — pass-through with a canvas thumbnail.
+- **ImageSave** — persist bytes locally or keep/download URL results.
+- **CameraControl** — build a shot/movement prompt string.
+- **ControlCondition / ControlLoop** — branch and bounded-loop control flow
+  (runs on the iterative engine).
 
 ## Configure A Provider
 
@@ -120,13 +147,8 @@ orphaned media.
 ## Not Yet Supported
 
 - Video generation and video async protocols (veo / doubao).
-- Control-flow nodes (condition / loop).
-- Statistics, prompt library, history, and help panels.
-- Image cropping / painting.
-- `text-merge` / `text-split` / `image-resize` / `image-merge` /
-  `image-compare` nodes.
-- Config ZIP import/export, provider health checks, parallel execution, and
-  undo/redo.
+- A dedicated help panel and update checker (mobile uses app-store updates).
+- Workflow folders/grouping and tabbed multi-workflow editing.
 - Embedding media payloads inside workflow JSON.
 
 ## Verify

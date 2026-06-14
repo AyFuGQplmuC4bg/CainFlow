@@ -5,15 +5,26 @@
 [设计方案](2026-06-13-flutter-core-creation-chain-design.md)、
 [实施计划](2026-06-13-flutter-core-creation-chain-impl.md)。
 
-本文档登记 mob 相对原版 Web 端**仍未支持**的功能,按价值与工程量分级,供后续迭代取用。已完成的能力不在此列。
+本文档登记 mob 相对原版 Web 端的功能差距,按价值与工程量分级。
+
+> **更新 2026-06-13(Phase 7–14 已落地):** 下列 P1/P2/P3/P4 中除视频生成外的所选项均已实现并测试覆盖。详见
+> [future features 实施计划](2026-06-13-flutter-future-features-impl.md)。已实现项标注 ✅。
 
 ---
 
-## 已具备(基线,不在 future 范围)
+## 已具备(基线 + Phase 7–14)
 
-仅作对照:Text / TextChat / ImageGenerate / ImageImport / ImagePreview / ImageSave
-六节点、custom-params、画布编辑(增删/点选连线/表单)、openai+google+newApiImageAsync
-协议、轻量多工作流、本地媒体与缩略图、持久化设置与日志。
+核心六节点、custom-params、画布编辑、openai/google/newApiImageAsync 协议、
+轻量多工作流、本地媒体与缩略图、持久化设置与日志;**新增**:
+- ✅ 辅助节点 text-merge/split、image-resize/merge/compare、image-crop/annotate
+- ✅ 多参考图 + mask、远程图片下载落盘
+- ✅ 并发执行、撤销/重做、真缩略图
+- ✅ 配置 ZIP 导入导出、Provider 健康检查/拉取模型
+- ✅ 执行历史、Prompt 库、请求统计
+- ✅ 控制流(条件/循环,迭代式引擎)、相机节点
+- ✅ TextChat 流式响应
+
+**仍未做:** 视频生成与视频异步协议(veo/doubao)—— 见 F1。
 
 ---
 
