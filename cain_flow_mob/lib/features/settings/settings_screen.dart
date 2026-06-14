@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../core/network/provider_client.dart';
 import '../../core/storage/mmkv_local_kv_store.dart';
 import '../logs/log_signals.dart';
 import '../workbench/workbench_signals.dart';
 import '../workbench/workbench_workflow_mapper.dart';
 import '../workflow/workflow_archive.dart';
 import '../workflow/workflow_repository.dart';
+import 'provider_health_checker.dart';
 import 'provider_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -587,6 +589,9 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
   late final TextEditingController _endpoint;
   late final TextEditingController _apiKey;
   late ModelProtocol _protocol;
+  String? _testMessage;
+  bool _testOk = false;
+  bool _testing = false;
 
   @override
   void initState() {
@@ -606,8 +611,33 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
     super.dispose();
   }
 
+  Future<void> _testConnection() async {
+    if (_testing) return;
+    setState(() {
+      _testing = true;
+      _testMessage = 'Testing…';
+      _testOk = false;
+    });
+    final provider = ProviderConfig(
+      id: widget.existing?.id ?? 'probe',
+      name: _name.text.trim(),
+      protocol: _protocol,
+      apiKey: _apiKey.text.trim(),
+      endpoint: _endpoint.text.trim(),
+    );
+    final checker = ProviderHealthChecker(client: DartIoProviderClient());
+    final result = await checker.check(provider);
+    if (!mounted) return;
+    setState(() {
+      _testing = false;
+      _testOk = result.ok;
+      _testMessage = result.message;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return AlertDialog(
       title: Text(widget.existing == null ? 'Add provider' : 'Edit provider'),
       content: SingleChildScrollView(
@@ -653,6 +683,25 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
                 () => _protocol = value ?? ModelProtocol.openai,
               ),
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('provider-test-button'),
+                icon: const Icon(Icons.wifi_tethering),
+                label: const Text('Test connection'),
+                onPressed: _testConnection,
+              ),
+            ),
+            if (_testMessage != null)
+              Text(
+                _testMessage!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: _testOk
+                      ? Colors.green
+                      : theme.colorScheme.error,
+                ),
+              ),
           ],
         ),
       ),
