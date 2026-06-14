@@ -46,6 +46,7 @@ WorkbenchExecutionController _buildDefaultController() {
     mediaRepository: MediaRepository(store: store),
     logs: logSignals,
     statistics: RequestStatistics(store: store),
+    executionSignals: executionSignals,
   );
   return WorkbenchExecutionController(
     workbench: workbenchSignals,
@@ -591,6 +592,9 @@ class _CanvasStage extends SignalWidget {
                   definition: nodeRegistry.get(node.type),
                   selected: state.selectedNodeId.value == node.id,
                   imagePayload: executionSignals.imageOutputs.value[node.id],
+                  runState:
+                      executionSignals.nodeStates.value[node.id]?.state,
+                  pollText: executionSignals.pollProgress.value[node.id],
                   pendingFromPort:
                       state.pendingConnection.value?.fromNodeId == node.id
                           ? state.pendingConnection.value?.fromPort
@@ -613,7 +617,19 @@ class _CanvasStage extends SignalWidget {
             bottom: 16,
             child: _StatusChip(
               label: _executionStatusLabel(executionSignals.workflowState.value),
-              value: state.graphSummary.value,
+              value: executionSignals.isRunning.value
+                  ? '${executionSignals.completedCount.value}/'
+                      '${executionSignals.totalCount.value}'
+                  : state.graphSummary.value,
+            ),
+          ),
+          const Positioned(
+            bottom: 16,
+            left: 0,
+            right: 0,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: _RunTimerOverlay(),
             ),
           ),
           Positioned(
@@ -628,6 +644,67 @@ class _CanvasStage extends SignalWidget {
         ],
       ),
     );
+  }
+}
+
+/// Bottom-center capsule shown while a workflow runs: live elapsed time and a
+/// cancel button. Fades out when not running.
+class _RunTimerOverlay extends SignalWidget {
+  const _RunTimerOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final running = executionSignals.isRunning.value;
+    // Build nothing when idle so no infinite spinner animation lingers.
+    if (!running) return const SizedBox.shrink();
+
+    final elapsed = executionSignals
+        .workflowElapsedAt(executionSignals.nowTick.value);
+    final seconds = elapsed == null
+        ? '0.0s'
+        : '${(elapsed.inMilliseconds / 1000).toStringAsFixed(1)}s';
+
+    return DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  seconds,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontFeatures: const [],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () => workbenchExecutionController.stop(),
+                  icon: const Icon(Icons.stop_rounded, size: 18),
+                  label: const Text('取消'),
+                ),
+              ],
+            ),
+          ),
+        );
   }
 }
 
@@ -668,6 +745,7 @@ class _InspectorRail extends SignalWidget {
               const SizedBox(height: 12),
               _NodeStatusLine(
                 snapshot: executionSignals.nodeStates.value[selected.id],
+                now: executionSignals.nowTick.value,
               ),
               const SizedBox(height: 16),
               OutlinedButton.icon(
@@ -856,9 +934,10 @@ String _nodeStateLabel(NodeRunState state) {
 }
 
 class _NodeStatusLine extends StatelessWidget {
-  const _NodeStatusLine({required this.snapshot});
+  const _NodeStatusLine({required this.snapshot, required this.now});
 
   final NodeRunSnapshot? snapshot;
+  final DateTime now;
 
   @override
   Widget build(BuildContext context) {
@@ -870,6 +949,12 @@ class _NodeStatusLine extends StatelessWidget {
       NodeRunState.completed => Colors.green,
       _ => theme.colorScheme.onSurfaceVariant,
     };
+    final duration = snap?.durationAt(now);
+    final durationText = duration == null
+        ? null
+        : (snap!.state == NodeRunState.running
+            ? '已运行 ${(duration.inMilliseconds / 1000).toStringAsFixed(1)}s'
+            : '耗时 ${(duration.inMilliseconds / 1000).toStringAsFixed(2)}s');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -881,6 +966,15 @@ class _NodeStatusLine extends StatelessWidget {
             Text('Status: $label', style: theme.textTheme.bodyMedium),
           ],
         ),
+        if (durationText != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            durationText,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
         if (snap != null && snap.message.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(

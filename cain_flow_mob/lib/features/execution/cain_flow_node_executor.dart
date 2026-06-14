@@ -532,6 +532,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       }
 
       attempt += 1;
+      services.executionSignals?.setPollProgress(node.id, '轮询 $attempt');
       final poll = AsyncImageProtocol.buildPollRequest(
         provider: provider,
         taskId: taskId,

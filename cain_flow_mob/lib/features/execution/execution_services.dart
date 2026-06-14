@@ -4,6 +4,7 @@ import '../media/media_downloader.dart';
 import '../media/media_repository.dart';
 import '../settings/provider_settings.dart';
 import '../statistics/request_statistics.dart';
+import 'execution_signals.dart';
 
 /// Bundle of runtime collaborators a concrete node executor needs.
 ///
@@ -18,6 +19,7 @@ class ExecutionServices {
     this.workflowId = '',
     this.downloaderOverride,
     this.statistics,
+    this.executionSignals,
   });
 
   final ProviderSettingsRepository settingsRepository;
@@ -30,6 +32,10 @@ class ExecutionServices {
 
   /// Optional request statistics sink.
   final RequestStatistics? statistics;
+
+  /// Optional execution signals, so nodes can publish transient progress
+  /// (e.g. async polling text). Null in unit tests that don't assert progress.
+  final ExecutionSignals? executionSignals;
 
   /// Media downloader, defaulting to a real `dart:io` implementation.
   MediaDownloader get downloader => downloaderOverride ?? MediaDownloader();
@@ -45,6 +51,7 @@ class ExecutionServices {
       logs: logs,
       downloaderOverride: downloaderOverride,
       statistics: statistics,
+      executionSignals: executionSignals,
       workflowId: workflowId ?? this.workflowId,
     );
   }

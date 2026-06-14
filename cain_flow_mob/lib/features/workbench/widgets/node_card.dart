@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../execution/execution_signals.dart';
 import '../../nodes/node_definition.dart';
 import '../workbench_signals.dart';
 import 'node_image_thumbnail.dart';
@@ -64,6 +65,8 @@ class NodeCard extends StatelessWidget {
     this.onPortTap,
     this.pendingFromPort,
     this.imagePayload,
+    this.runState,
+    this.pollText,
   });
 
   final WorkbenchNode node;
@@ -86,6 +89,12 @@ class NodeCard extends StatelessWidget {
   /// Image output payload (`{kind: url|asset}`) to preview inside the card.
   final Map<String, dynamic>? imagePayload;
 
+  /// Current execution state for run-time styling (border/glow/status dot).
+  final NodeRunState? runState;
+
+  /// Transient progress text shown while running (e.g. async polling).
+  final String? pollText;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -96,6 +105,12 @@ class NodeCard extends StatelessWidget {
     final cardHeight =
         nodeCardHeight(definition, hasImage: imagePayload != null);
 
+    final runColor = _runStateColor(theme, runState);
+    final borderColor = selected
+        ? theme.colorScheme.primary
+        : (runColor ?? theme.colorScheme.outlineVariant);
+    final borderWidth = selected || runColor != null ? 2.0 : 1.0;
+
     return GestureDetector(
       onTap: () {
         onSelect();
@@ -105,77 +120,141 @@ class NodeCard extends StatelessWidget {
       onPanUpdate: (details) {
         onMove(NodeOffset(details.delta.dx, details.delta.dy));
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        width: workbenchNodeSize.width,
-        height: cardHeight,
-        padding: const EdgeInsets.all(_kCardPadding),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant,
-            width: selected ? 2 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-            if (selected)
-              BoxShadow(
-                color: theme.colorScheme.primary.withValues(alpha: 0.24),
-                blurRadius: 22,
-              ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(node.title, style: theme.textTheme.titleSmall),
-            const SizedBox(height: 6),
-            Text(
-              definition?.description ?? node.type,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (imagePayload != null) ...[
-              const SizedBox(height: 8),
-              NodeImageThumbnail(payload: imagePayload!, size: 48),
-            ],
-            const Spacer(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _PortCluster(
-                  ports: definition?.inputPorts ?? const [],
-                  fallbackLabel: 'in',
-                  color: theme.colorScheme.secondary,
-                  onPortTap: onPortTap == null
-                      ? null
-                      : (port) => onPortTap!(port, false),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: workbenchNodeSize.width,
+            height: cardHeight,
+            padding: const EdgeInsets.all(_kCardPadding),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: borderColor, width: borderWidth),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
                 ),
-                _PortCluster(
-                  ports: definition?.outputPorts ?? const [],
-                  fallbackLabel: 'out',
-                  color: theme.colorScheme.primary,
-                  reverse: true,
-                  pendingPort: pendingFromPort,
-                  onPortTap: onPortTap == null
-                      ? null
-                      : (port) => onPortTap!(port, true),
-                ),
+                if (selected)
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.24),
+                    blurRadius: 22,
+                  )
+                else if (runState == NodeRunState.running)
+                  BoxShadow(
+                    color: (runColor ?? theme.colorScheme.primary)
+                        .withValues(alpha: 0.4),
+                    blurRadius: 22,
+                  ),
               ],
             ),
-          ],
-        ),
+            child: Opacity(
+              opacity: runState == NodeRunState.skipped ? 0.5 : 1,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(node.title, style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 6),
+                  Text(
+                    pollText ?? definition?.description ?? node.type,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: pollText != null
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (imagePayload != null) ...[
+                    const SizedBox(height: 8),
+                    NodeImageThumbnail(payload: imagePayload!, size: 48),
+                  ],
+                  const Spacer(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _PortCluster(
+                        ports: definition?.inputPorts ?? const [],
+                        fallbackLabel: 'in',
+                        color: theme.colorScheme.secondary,
+                        onPortTap: onPortTap == null
+                            ? null
+                            : (port) => onPortTap!(port, false),
+                      ),
+                      _PortCluster(
+                        ports: definition?.outputPorts ?? const [],
+                        fallbackLabel: 'out',
+                        color: theme.colorScheme.primary,
+                        reverse: true,
+                        pendingPort: pendingFromPort,
+                        onPortTap: onPortTap == null
+                            ? null
+                            : (port) => onPortTap!(port, true),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (runState != null)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: _StatusDot(state: runState!, color: runColor),
+            ),
+        ],
       ),
+    );
+  }
+
+  static Color? _runStateColor(ThemeData theme, NodeRunState? state) {
+    return switch (state) {
+      NodeRunState.running => const Color(0xFF22D3EE), // cyan
+      NodeRunState.completed => const Color(0xFF10B981), // green
+      NodeRunState.failed => theme.colorScheme.error,
+      NodeRunState.skipped => theme.colorScheme.outlineVariant,
+      _ => null,
+    };
+  }
+}
+
+/// Small corner badge reflecting a node's execution state.
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({required this.state, this.color});
+
+  final NodeRunState state;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state == NodeRunState.running) {
+      return SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.5,
+          valueColor: AlwaysStoppedAnimation(color ?? const Color(0xFF22D3EE)),
+        ),
+      );
+    }
+    final dotColor = color ?? Theme.of(context).colorScheme.outline;
+    final icon = switch (state) {
+      NodeRunState.completed => Icons.check,
+      NodeRunState.failed => Icons.close,
+      NodeRunState.skipped => Icons.remove,
+      _ => null,
+    };
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+      child: icon == null
+          ? null
+          : Icon(icon, size: 11, color: Colors.white),
     );
   }
 }

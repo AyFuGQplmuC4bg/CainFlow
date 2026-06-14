@@ -30,11 +30,13 @@ void main() {
     expect(find.textContaining('Ready -'), findsOneWidget);
 
     executionSignals.markWorkflowRunning();
-    await tester.pumpAndSettle();
+    // A running workflow starts a 1s ticker + spinner, so the tree never
+    // settles; pump a frame instead of pumpAndSettle.
+    await tester.pump();
     expect(find.textContaining('Running -'), findsOneWidget);
 
     executionSignals.markWorkflowFailed('boom');
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(find.textContaining('Failed -'), findsOneWidget);
   });
 
