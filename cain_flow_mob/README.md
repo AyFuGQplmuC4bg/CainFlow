@@ -13,8 +13,17 @@ first serial execution engine without a Python service or WebView wrapper.
 - Direct OpenAI-compatible and Gemini request builders.
 - Real `dart:io` HTTP provider client with timeout, cancellation, and a
   transient-only retry wrapper.
-- Concrete node executor for `Text`, `TextChat`, `ImageGenerate`, and
-  `ImageSave`.
+- Concrete node executor for `Text`, `TextChat`, `ImageGenerate`,
+  `ImageImport`, `ImagePreview`, and `ImageSave`.
+- Mobile-friendly graph editing: add nodes (picker), point-select connections
+  with type/cycle validation, edit parameters in a bottom sheet, and delete
+  nodes/connections.
+- Per-node model selection and custom JSON params injected into requests.
+- Async image protocol (`newApiImageAsync`): submit → poll → resolve URL, with
+  configurable poll interval, timeout, and cancellation.
+- Image import from the device gallery and on-canvas thumbnails (local files via
+  `Image.file`, remote URLs via `cached_network_image`).
+- Lightweight multi-workflow management: create, switch, rename, delete.
 - Run/Stop wired to the real serial workflow runner with canvas and inspector
   status.
 - Local media repository that stores bytes as app files and keeps only metadata
@@ -29,10 +38,53 @@ first serial execution engine without a Python service or WebView wrapper.
    except the edit dialog.
 3. Under **Models**, tap **Add model** and set name, model ID, task type
    (`chat` or `image`), protocol, and the provider binding.
-4. Under **Runtime**, set the request timeout and retry count, and pick the
-   active chat and image models.
+4. Under **Runtime**, set the request timeout and retry count, the async poll
+   interval and timeout (for `newApiImageAsync` models), and pick the active
+   chat and image models.
 
 Settings persist through MMKV and survive app restart.
+
+## Edit A Graph On Device
+
+- **Add node**: use the **Add node** button in the Workflows rail, or long-press
+  empty canvas, then pick a node type.
+- **Connect**: tap an output port (it highlights), then tap a compatible input
+  port. Type mismatches, self-connections, and cycles are rejected with a
+  toast. A new edge replaces an existing one on the same input port.
+- **Edit parameters**: tap a node to open its bottom-sheet form. Fields are
+  driven by the node definition (text, multiline, number, select, model picker,
+  custom JSON params, image picker).
+- **Delete**: the node sheet has a delete action; connections are removed by
+  re-wiring their input port.
+
+## Build A Creation Chain
+
+The core node set covers a text/image creation chain:
+
+- `Text` → static prompt text.
+- `TextChat` → chat completion (OpenAI-compatible or Gemini), with optional
+  system prompt and custom params.
+- `ImageImport` → pick a local image; stored via `MediaRepository`.
+- `ImageGenerate` → text-to-image; supports the async protocol below.
+- `ImagePreview` → passes its input image through and renders a canvas
+  thumbnail.
+- `ImageSave` → persists base64 bytes locally or keeps URL metadata.
+
+## Async Image Models (`newApiImageAsync`)
+
+For providers that return a task id instead of an inline image:
+
+1. Add a provider/model with protocol `newApiImageAsync`.
+2. `ImageGenerate` submits the task, then polls status on the configured
+   interval until `completed`/`failed` or the timeout elapses.
+3. Pressing **Stop** cancels polling between attempts.
+
+## Manage Workflows
+
+The Workflows rail lists saved workflows. Use **New workflow** to start an empty
+graph, tap a saved entry to switch (the current graph is flushed first), and
+long-press an entry to rename or delete it. Deleting a workflow cleans up its
+orphaned media.
 
 ## Run A Workflow (No Python)
 
@@ -57,12 +109,24 @@ Settings persist through MMKV and survive app restart.
   to validate, load it into the canvas, and save it through the repository.
   Invalid JSON shows an inline error and is logged.
 
+## Platform Permissions
+
+`ImageImport` uses the device photo library:
+
+- **Android**: `READ_MEDIA_IMAGES` is declared in the manifest (Android 13+
+  uses the system Photo Picker, which needs no runtime grant).
+- **iOS**: `NSPhotoLibraryUsageDescription` is set in `Info.plist`.
+
 ## Not Yet Supported
 
-- Video generation.
-- Async NewAPI-style polling.
-- Downloading remote image URLs to local files.
-- The full original web node set.
+- Video generation and video async protocols (veo / doubao).
+- Control-flow nodes (condition / loop).
+- Statistics, prompt library, history, and help panels.
+- Image cropping / painting.
+- `text-merge` / `text-split` / `image-resize` / `image-merge` /
+  `image-compare` nodes.
+- Config ZIP import/export, provider health checks, parallel execution, and
+  undo/redo.
 - Embedding media payloads inside workflow JSON.
 
 ## Verify
