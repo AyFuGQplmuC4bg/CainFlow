@@ -1,4 +1,5 @@
 import '../execution/execution_signals.dart';
+import '../execution/iterative_workflow_runner.dart';
 import '../execution/node_executor.dart';
 import '../execution/workflow_runner.dart';
 import '../history/history_repository.dart';
@@ -31,7 +32,7 @@ class WorkbenchExecutionController {
   /// Optional history sink; when set, a completed run appends an entry.
   final HistoryRepository? historyRepository;
 
-  WorkflowRunner? _runner;
+  void Function()? _cancelActive;
   bool _isRunning = false;
 
   bool get isRunning => _isRunning;
@@ -42,12 +43,8 @@ class WorkbenchExecutionController {
     workbench.runState.value = WorkbenchRunState.running;
 
     final workflow = workbenchSignalsToWorkflow(workbench);
-    final runner = WorkflowRunner(
-      executor: executor,
-      signals: executionSignals,
-      maxConcurrency: maxConcurrency,
-    );
-    _runner = runner;
+    final hasControlFlow = workbench.nodes.value
+        .any((n) => n.type.startsWith('Control'));
 
     logs.add(
       LogLevel.info,
@@ -56,7 +53,28 @@ class WorkbenchExecutionController {
     );
 
     try {
-      final result = await runner.run(workflow);
+      final WorkflowRunResult result;
+      if (hasControlFlow) {
+        final runner = IterativeWorkflowRunner(
+          executor: executor,
+          signals: executionSignals,
+        );
+        _cancelActive = runner.cancel;
+        final iterative = await runner.run(workflow);
+        result = WorkflowRunResult(
+          state: iterative.state,
+          results: iterative.results,
+          error: iterative.error,
+        );
+      } else {
+        final runner = WorkflowRunner(
+          executor: executor,
+          signals: executionSignals,
+          maxConcurrency: maxConcurrency,
+        );
+        _cancelActive = runner.cancel;
+        result = await runner.run(workflow);
+      }
       _recordImageOutputs(result);
       _recordHistory(result);
       _onResult(result);
@@ -70,7 +88,7 @@ class WorkbenchExecutionController {
       rethrow;
     } finally {
       _isRunning = false;
-      _runner = null;
+      _cancelActive = null;
       if (workbench.runState.value == WorkbenchRunState.running) {
         workbench.runState.value = WorkbenchRunState.idle;
       }
@@ -79,7 +97,7 @@ class WorkbenchExecutionController {
 
   void stop() {
     if (!_isRunning) return;
-    _runner?.cancel();
+    _cancelActive?.call();
     workbench.runState.value = WorkbenchRunState.stopped;
     logs.add(LogLevel.info, 'Workflow run stop requested', scope: 'workbench');
   }

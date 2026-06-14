@@ -16,9 +16,12 @@ import 'provider_request_builder.dart';
 /// Concrete executor for CainFlow node types. Backed by [ExecutionServices]
 /// so the [WorkflowRunner] can stay orchestration-only.
 class CainFlowNodeExecutor implements NodeExecutor {
-  const CainFlowNodeExecutor({required this.services});
+  CainFlowNodeExecutor({required this.services});
 
   final ExecutionServices services;
+
+  /// Per-node loop iteration counters for [ControlLoop], keyed by node id.
+  final Map<String, int> _loopCounters = {};
 
   @override
   Future<NodeExecutionResult> execute(
@@ -48,9 +51,65 @@ class CainFlowNodeExecutor implements NodeExecutor {
         return _executeImageCompare(node, context);
       case 'ImageSave':
         return _executeImageSave(node, context);
+      case 'ControlCondition':
+        return _executeControlCondition(node, context);
+      case 'ControlLoop':
+        return _executeControlLoop(node, context);
       default:
         throw UnsupportedError('Unsupported node type: ${node.type}');
     }
+  }
+
+  /// Routes the input value to the `true` or `false` output port based on a
+  /// comparison. Only the chosen port carries a value, so only that branch's
+  /// downstream nodes run under the iterative engine.
+  NodeExecutionResult _executeControlCondition(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) {
+    final value = _stringFrom(context.inputs['value']) ??
+        _stringFrom(node.data['value']) ??
+        '';
+    final compareTo = _stringFrom(node.data['compareTo']) ?? '';
+    final op = _stringFrom(node.data['operator']) ?? '==';
+    final matched = switch (op) {
+      '!=' => value != compareTo,
+      'contains' => value.contains(compareTo),
+      'notEmpty' => value.trim().isNotEmpty,
+      _ => value == compareTo,
+    };
+    return NodeExecutionResult(
+      nodeId: node.id,
+      outputs: matched ? {'true': value} : {'false': value},
+      message: matched ? 'true' : 'false',
+    );
+  }
+
+  /// Emits the input on the `loop` port for the first N executions, then on
+  /// `done`. Iteration count is tracked per node id across re-executions.
+  NodeExecutionResult _executeControlLoop(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) {
+    final limit = _intFrom(node.data['count']) ?? 1;
+    final iteration = _loopCounters[node.id] ?? 0;
+    final value = _stringFrom(context.inputs['value']) ??
+        _stringFrom(node.data['value']) ??
+        '';
+    if (iteration < limit) {
+      _loopCounters[node.id] = iteration + 1;
+      return NodeExecutionResult(
+        nodeId: node.id,
+        outputs: {'loop': value},
+        message: 'iteration ${iteration + 1}/$limit',
+      );
+    }
+    _loopCounters.remove(node.id);
+    return NodeExecutionResult(
+      nodeId: node.id,
+      outputs: {'done': value},
+      message: 'done',
+    );
   }
 
   NodeExecutionResult _executeText(FlowNode node) {

@@ -253,4 +253,51 @@ const nodeRegistry = NodeRegistry([
       NodePortDefinition(name: 'image', type: 'image', label: 'Comparison'),
     ],
   ),
+  NodeDefinition(
+    type: 'ControlCondition',
+    title: 'Condition',
+    description: 'Routes input to the true or false branch by a comparison.',
+    inputPorts: [
+      NodePortDefinition(name: 'value', type: 'text', label: 'Value'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'true', type: 'text', label: 'True'),
+      NodePortDefinition(name: 'false', type: 'text', label: 'False'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'operator',
+        label: 'Operator',
+        control: NodeParamControl.select,
+        options: ['==', '!=', 'contains', 'notEmpty'],
+        defaultValue: '==',
+      ),
+      NodeParamDefinition(
+        name: 'compareTo',
+        label: 'Compare to',
+        control: NodeParamControl.text,
+        defaultValue: '',
+      ),
+    ],
+  ),
+  NodeDefinition(
+    type: 'ControlLoop',
+    title: 'Loop',
+    description: 'Emits the loop branch a fixed number of times, then done.',
+    inputPorts: [
+      NodePortDefinition(name: 'value', type: 'text', label: 'Value'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'loop', type: 'text', label: 'Loop'),
+      NodePortDefinition(name: 'done', type: 'text', label: 'Done'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'count',
+        label: 'Iterations',
+        control: NodeParamControl.number,
+        defaultValue: 3,
+      ),
+    ],
+  ),
 ]);
