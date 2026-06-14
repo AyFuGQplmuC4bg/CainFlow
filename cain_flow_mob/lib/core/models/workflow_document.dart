@@ -52,6 +52,7 @@ class WorkflowDocument {
     required this.nodes,
     required this.connections,
     required this.version,
+    this.name = '',
     this.extra = const {},
   });
 
@@ -69,27 +70,50 @@ class WorkflowDocument {
       ..remove('canvas')
       ..remove('nodes')
       ..remove('connections')
-      ..remove('version');
+      ..remove('version')
+      ..remove('name');
     return WorkflowDocument(
       canvas: _canvasFrom(json['canvas']),
       nodes: _nodesFrom(json['nodes']),
       connections: _connectionsFrom(json['connections']),
       version: json['version']?.toString() ?? defaultVersion,
+      name: json['name']?.toString() ?? '',
       extra: extra,
     );
   }
 
-  static const defaultVersion = '1.3';
+  /// Current schema version. Older documents (1.3 and earlier) load without
+  /// node `data` maps; [FlowNode.fromJson] already defaults those to empty.
+  static const defaultVersion = '1.4';
 
   final WorkflowCanvas canvas;
   final List<FlowNode> nodes;
   final List<FlowConnection> connections;
   final String version;
+  final String name;
   final Map<String, dynamic> extra;
+
+  WorkflowDocument copyWith({
+    WorkflowCanvas? canvas,
+    List<FlowNode>? nodes,
+    List<FlowConnection>? connections,
+    String? version,
+    String? name,
+  }) {
+    return WorkflowDocument(
+      canvas: canvas ?? this.canvas,
+      nodes: nodes ?? this.nodes,
+      connections: connections ?? this.connections,
+      version: version ?? this.version,
+      name: name ?? this.name,
+      extra: extra,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
       ...extra,
+      if (name.isNotEmpty) 'name': name,
       'canvas': canvas.toJson(),
       'nodes': nodes.map((node) => node.toJson()).toList(),
       'connections': connections.map((connection) => connection.toJson()).toList(),

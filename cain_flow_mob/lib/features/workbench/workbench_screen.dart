@@ -12,8 +12,12 @@ import '../nodes/node_registry.dart';
 import '../nodes/node_definition.dart';
 import '../settings/provider_settings.dart';
 import '../settings/settings_screen.dart';
+import '../workflow/workflow_manager.dart';
+import '../workflow/workflow_repository.dart';
 import '../../core/network/provider_client.dart';
 import '../../core/network/retrying_provider_client.dart';
+import '../../core/storage/in_memory_local_kv_store.dart';
+import '../../core/storage/local_kv_store.dart';
 import '../../core/storage/mmkv_local_kv_store.dart';
 import 'workbench_execution_controller.dart';
 import 'workbench_signals.dart';
@@ -26,7 +30,7 @@ import 'widgets/node_param_sheet.dart';
 /// real HTTP provider client with retry support. Built lazily so widget
 /// rendering does not require native MMKV to be initialized.
 WorkbenchExecutionController _buildDefaultController() {
-  final store = MmkvLocalKvStore();
+  final store = _safeStore();
   final settingsRepository = ProviderSettingsRepository(store: store);
   final ProviderClient client = RetryingProviderClient(
     inner: DartIoProviderClient(),
@@ -49,6 +53,30 @@ WorkbenchExecutionController _buildDefaultController() {
 WorkbenchExecutionController? _defaultController;
 WorkbenchExecutionController get workbenchExecutionController =>
     _defaultController ??= _buildDefaultController();
+
+/// Lazily-built workflow manager backed by MMKV, used by the Workflows rail.
+WorkflowManager? _defaultWorkflowManager;
+WorkflowManager get workflowManager {
+  if (_defaultWorkflowManager != null) return _defaultWorkflowManager!;
+  final store = _safeStore();
+  final manager = WorkflowManager(
+    repository: WorkflowRepository(store: store),
+    workbench: workbenchSignals,
+    media: MediaRepository(store: store),
+  );
+  manager.refresh();
+  return _defaultWorkflowManager = manager;
+}
+
+/// Returns the native MMKV store, falling back to an in-memory store when
+/// MMKV is not initialized (e.g. widget tests).
+LocalKvStore _safeStore() {
+  try {
+    return MmkvLocalKvStore();
+  } catch (_) {
+    return InMemoryLocalKvStore();
+  }
+}
 
 class WorkbenchScreen extends SignalWidget {
   const WorkbenchScreen({super.key, this.controller});
@@ -257,7 +285,7 @@ void _handlePortTap(
 
 List<ModelConfig> _loadModels() {
   try {
-    final store = MmkvLocalKvStore();
+    final store = _safeStore();
     return ProviderSettingsRepository(store: store).load().models;
   } catch (_) {
     return const [];
@@ -270,7 +298,7 @@ Future<String?> _pickAndStoreImage() async {
   final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
   if (picked == null) return null;
   final bytes = await picked.readAsBytes();
-  final store = MmkvLocalKvStore();
+  final store = _safeStore();
   final media = MediaRepository(store: store);
   final asset = await media.saveBytes(
     workflowId: workbenchSignals.activeWorkflowName.value,
@@ -287,6 +315,74 @@ String _mimeForName(String name) {
   if (lower.endsWith('.webp')) return 'image/webp';
   if (lower.endsWith('.gif')) return 'image/gif';
   return 'image/png';
+}
+
+/// Prompts for a name and creates a new (empty) workflow.
+Future<void> _createWorkflow(BuildContext context) async {
+  final name = await _promptForName(context, title: 'New workflow');
+  if (name == null || name.isEmpty) return;
+  workflowManager.newWorkflow(name: name);
+}
+
+/// Shows rename/delete actions for a saved workflow [id].
+Future<void> _workflowActions(BuildContext context, String id) async {
+  final action = await showModalBottomSheet<String>(
+    context: context,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Rename'),
+            onTap: () => Navigator.of(context).pop('rename'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline),
+            title: const Text('Delete'),
+            onTap: () => Navigator.of(context).pop('delete'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (action == 'rename') {
+    if (!context.mounted) return;
+    final name = await _promptForName(context, title: 'Rename workflow');
+    if (name != null && name.isNotEmpty) workflowManager.rename(id, name);
+  } else if (action == 'delete') {
+    await workflowManager.delete(id);
+  }
+}
+
+Future<String?> _promptForName(
+  BuildContext context, {
+  required String title,
+}) {
+  final controller = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Name'),
+        onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.of(context).pop(controller.text.trim()),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _CompactWorkbench extends StatelessWidget {
@@ -317,6 +413,8 @@ class _WorkflowRail extends SignalWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isCompact = constraints.maxHeight < 260;
+          final manager = workflowManager;
+          final activeId = manager.activeWorkflowId.value;
           final content = [
             Text('Workflows', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
@@ -326,15 +424,37 @@ class _WorkflowRail extends SignalWidget {
               onTap: () => _showNodePicker(context),
             ),
             const SizedBox(height: 8),
+            _RailAction(
+              icon: Icons.note_add_outlined,
+              label: 'New workflow',
+              onTap: () => _createWorkflow(context),
+            ),
+            const SizedBox(height: 8),
+            // Active (possibly unsaved) workflow.
             _WorkflowTile(
               title: state.activeWorkflowName.value,
               subtitle: state.graphSummary.value,
               selected: true,
+              onLongPress: activeId == null
+                  ? null
+                  : () => _workflowActions(context, activeId),
             ),
+            // Other saved workflows.
+            for (final wf in manager.workflows.value)
+              if (wf.id != activeId) ...[
+                const SizedBox(height: 8),
+                _WorkflowTile(
+                  title: wf.name,
+                  subtitle: wf.id,
+                  selected: false,
+                  onTap: () => manager.switchTo(wf.id),
+                  onLongPress: () => _workflowActions(context, wf.id),
+                ),
+              ],
             if (!isCompact) ...[
               const Spacer(),
               Text(
-                'MMKV persistence boundary ready',
+                'Long-press a workflow to rename or delete',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -515,17 +635,24 @@ class _WorkflowTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.selected,
+    this.onTap,
+    this.onLongPress,
   });
 
   final String title;
   final String subtitle;
   final bool selected;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: selected
@@ -557,6 +684,7 @@ class _WorkflowTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

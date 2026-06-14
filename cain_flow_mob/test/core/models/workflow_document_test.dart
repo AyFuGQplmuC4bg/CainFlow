@@ -55,6 +55,29 @@ void main() {
     expect(repository.listWorkflowIds(), ['wf_demo']);
     expect(repository.loadWorkflow('wf_demo')?.version, document.version);
   });
+
+  test('legacy 1.3 nodes without data default to an empty data map', () {
+    final document = WorkflowDocument.fromJson({
+      'version': '1.3',
+      'canvas': {'x': 0, 'y': 0, 'zoom': 1},
+      'nodes': [
+        {'id': 'n', 'type': 'Text', 'x': 0, 'y': 0},
+      ],
+      'connections': <Map<String, dynamic>>[],
+    });
+
+    expect(document.version, '1.3');
+    expect(document.nodes.single.data, isEmpty);
+    expect(document.name, '');
+  });
+
+  test('current default version is 1.4 and name round-trips', () {
+    expect(WorkflowDocument.defaultVersion, '1.4');
+    final doc = WorkflowDocument.empty().copyWith(name: 'Demo');
+    final restored = WorkflowDocument.fromJson(doc.toJson());
+    expect(restored.name, 'Demo');
+    expect(restored.version, '1.4');
+  });
 }
 
 class _MemoryLocalKvStore implements LocalKvStore {
