@@ -201,8 +201,7 @@ void main() {
       expect(body['stream'], false);
     });
 
-    test('injects a url reference image as a multimodal content part',
-        () async {
+    test('injects a url reference image as a multimodal content part',        () async {
       final harness = ExecutorHarness(
         settings: chatSettings(),
         responses: const [
@@ -229,6 +228,35 @@ void main() {
             (p['image_url'] as Map)['url'] == 'https://cdn/x.png'),
         isTrue,
       );
+    });
+
+    test('accumulates an SSE streaming response into the final text', () async {
+      final harness = ExecutorHarness(
+        settings: chatSettings(),
+        responses: const [
+          FakeResponse(
+            200,
+            'data: {"choices":[{"delta":{"content":"Hel"}}]}\n'
+            'data: {"choices":[{"delta":{"content":"lo"}}]}\n'
+            'data: [DONE]\n',
+          ),
+        ],
+      );
+      final node = const FlowNode(
+        id: 'c',
+        type: 'TextChat',
+        x: 0,
+        y: 0,
+        data: {'stream': 'true'},
+      );
+
+      final result = await harness.executor.execute(
+        node,
+        _context(inputs: {'prompt': 'hi'}),
+      );
+
+      expect(result.outputs['text'], 'Hello');
+      expect(harness.client.requests.single.body['stream'], true);
     });
   });
 

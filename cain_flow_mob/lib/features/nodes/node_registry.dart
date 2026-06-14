@@ -58,6 +58,13 @@ const nodeRegistry = NodeRegistry([
         defaultValue: '',
       ),
       NodeParamDefinition(
+        name: 'stream',
+        label: 'Stream response',
+        control: NodeParamControl.select,
+        options: ['false', 'true'],
+        defaultValue: 'false',
+      ),
+      NodeParamDefinition(
         name: 'customParams',
         label: 'Custom params',
         control: NodeParamControl.customParams,

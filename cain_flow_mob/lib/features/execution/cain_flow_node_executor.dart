@@ -12,6 +12,7 @@ import 'async_image_protocol.dart';
 import 'execution_services.dart';
 import 'node_executor.dart';
 import 'provider_request_builder.dart';
+import 'streaming_parser.dart';
 
 /// Concrete executor for CainFlow node types. Backed by [ExecutionServices]
 /// so the [WorkflowRunner] can stay orchestration-only.
@@ -390,12 +391,18 @@ class CainFlowNodeExecutor implements NodeExecutor {
     final provider = _resolveProvider(node: node, settings: settings, model: model);
     final prompt = _resolvePrompt(node: node, inputs: context.inputs);
 
+    final streaming = _stringFrom(node.data['stream']) == 'true';
+    final customParams = Map<String, dynamic>.from(
+      _customParamsFrom(node.data['customParams']),
+    );
+    if (streaming) customParams['stream'] = true;
+
     final request = ProviderRequestBuilder.buildChatRequest(
       provider: provider,
       model: model,
       prompt: prompt,
       systemPrompt: _stringFrom(node.data['systemPrompt']) ?? '',
-      customParams: _customParamsFrom(node.data['customParams']),
+      customParams: customParams,
       referenceImages: await _collectReferenceImages(context.inputs),
     );
 
@@ -406,8 +413,20 @@ class CainFlowNodeExecutor implements NodeExecutor {
       providerName: provider.name,
       modelName: model.modelId,
     );
-    final text = _parseChatText(model.protocol, response.body);
+    // Streaming responses arrive as SSE; accumulate deltas. The buffered
+    // (non-stream) body is parsed normally. We detect SSE by the data: prefix.
+    final text = streaming || response.body.contains('data:')
+        ? _parseStreamOrBuffered(model.protocol, response.body)
+        : _parseChatText(model.protocol, response.body);
     return NodeExecutionResult(nodeId: node.id, outputs: {'text': text});
+  }
+
+  /// Parses an SSE-accumulated body, falling back to the buffered parser when
+  /// no streaming deltas are present.
+  String _parseStreamOrBuffered(ModelProtocol protocol, String body) {
+    final streamed = StreamingParser.accumulate(body, protocol);
+    if (streamed.isNotEmpty) return streamed;
+    return _parseChatText(protocol, body);
   }
 
   Future<NodeExecutionResult> _executeImageGenerate(
