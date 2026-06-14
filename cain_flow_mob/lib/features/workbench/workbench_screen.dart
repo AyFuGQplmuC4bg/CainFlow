@@ -90,6 +90,10 @@ WorkflowManager get workflowManager {
     flushActive: () => workflowAutoSave.flush(),
     onWorkflowApplied: _restoreImageOutputs,
   );
+  // Assign BEFORE calling refresh/switchTo so any re-entrant access to
+  // workflowManager (e.g. via flushActive → workflowAutoSave → workflowManager)
+  // returns the already-created instance instead of starting a new init.
+  _defaultWorkflowManager = manager;
   manager.refresh();
 
   // Restore the workflow that was open when the app was last closed.
@@ -98,7 +102,7 @@ WorkflowManager get workflowManager {
     manager.switchTo(lastId);
   }
 
-  return _defaultWorkflowManager = manager;
+  return manager;
 }
 
 /// Auto-save: debounced, only fires when the workflow already has a saved ID.
