@@ -4,7 +4,53 @@ import '../../nodes/node_definition.dart';
 import '../workbench_signals.dart';
 import 'node_image_thumbnail.dart';
 
+/// Base card size for a node with up to two ports and no thumbnail.
 const workbenchNodeSize = Size(220, 150);
+
+/// Fixed height of a single port row, so connection anchors can be computed
+/// deterministically without measuring the rendered widget.
+const double kPortRowHeight = 24;
+
+/// Inner padding of the card (matches the `EdgeInsets.all` below).
+const double _kCardPadding = 14;
+
+/// Extra height added to the thumbnail-bearing cards.
+const double _kThumbnailExtra = 56;
+
+/// Total rendered height of a node card, shared by [NodeCard] and the
+/// connection painter so anchors line up exactly.
+double nodeCardHeight(NodeDefinition? definition, {bool hasImage = false}) {
+  final portRows = _portRowCount(definition);
+  final extraPortRows = (portRows - 2).clamp(0, 6);
+  return workbenchNodeSize.height +
+      extraPortRows * 26.0 +
+      (hasImage ? _kThumbnailExtra : 0);
+}
+
+int _portRowCount(NodeDefinition? definition) {
+  final inputs = definition?.inputPorts.length ?? 0;
+  final outputs = definition?.outputPorts.length ?? 0;
+  return inputs > outputs ? inputs : outputs;
+}
+
+/// Y offset (from the card top) of the center of port [portIndex] on the
+/// input or output side. Ports render as a bottom-aligned column, so the
+/// last port sits one row-height above the card's bottom padding.
+double portAnchorY(
+  NodeDefinition? definition, {
+  required bool isOutput,
+  required int portIndex,
+  required bool hasImage,
+}) {
+  final count = isOutput
+      ? (definition?.outputPorts.length ?? 1)
+      : (definition?.inputPorts.length ?? 1);
+  final n = count < 1 ? 1 : count;
+  final height = nodeCardHeight(definition, hasImage: hasImage);
+  final bottom = height - _kCardPadding;
+  // Row i (0-based from the top of the cluster) center:
+  return bottom - (n - portIndex) * kPortRowHeight + kPortRowHeight / 2;
+}
 
 class NodeCard extends StatelessWidget {
   const NodeCard({
@@ -45,15 +91,10 @@ class NodeCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     // Card grows for nodes with more than two stacked ports, plus an optional
-    // thumbnail. Two-port nodes keep the base height.
-    final portRows = [
-      definition?.inputPorts.length ?? 0,
-      definition?.outputPorts.length ?? 0,
-    ].reduce((a, b) => a > b ? a : b);
-    final extraPortRows = (portRows - 2).clamp(0, 6);
-    final cardHeight = workbenchNodeSize.height +
-        extraPortRows * 26.0 +
-        (imagePayload != null ? 56 : 0);
+    // thumbnail. Height is computed by the shared helper so connection anchors
+    // line up exactly with the rendered ports.
+    final cardHeight =
+        nodeCardHeight(definition, hasImage: imagePayload != null);
 
     return GestureDetector(
       onTap: () {
@@ -68,7 +109,7 @@ class NodeCard extends StatelessWidget {
         duration: const Duration(milliseconds: 120),
         width: workbenchNodeSize.width,
         height: cardHeight,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(_kCardPadding),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
@@ -228,8 +269,8 @@ class _PortRow extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+      child: SizedBox(
+        height: kPortRowHeight,
         child: Row(
           mainAxisAlignment:
               reverse ? MainAxisAlignment.end : MainAxisAlignment.start,

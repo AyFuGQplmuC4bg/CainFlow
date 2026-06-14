@@ -551,6 +551,9 @@ class _CanvasStage extends SignalWidget {
               child: ConnectionLayer(
                 nodes: displayNodes,
                 connections: state.connections.value,
+                zoom: zoom,
+                imageOutputs:
+                    executionSignals.imageOutputs.value.keys.toSet(),
               ),
             ),
           ),
