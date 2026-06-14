@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/provider_client.dart';
 import '../../core/storage/mmkv_local_kv_store.dart';
+import '../../l10n/app_localizations.dart';
+import '../../l10n/locale_signal.dart';
 import '../logs/log_signals.dart';
 import '../workbench/workbench_signals.dart';
 import '../workbench/workbench_workflow_mapper.dart';
@@ -67,10 +69,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Row(
               children: [
-                Text('Settings', style: theme.textTheme.titleLarge),
+                Text(context.l10n.settingsTitle, style: theme.textTheme.titleLarge),
                 const Spacer(),
                 IconButton(
-                  tooltip: 'Close settings',
+                  tooltip: context.l10n.closeSettings,
                   onPressed: () => Navigator.of(context).maybePop(),
                   icon: const Icon(Icons.close_rounded),
                 ),
@@ -82,6 +84,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildModelsSection(theme),
             const SizedBox(height: 20),
             _buildRuntimeSection(theme),
+            const SizedBox(height: 20),
+            _buildLanguageSection(theme),
             const SizedBox(height: 20),
             _buildArchiveSection(theme),
           ],
@@ -96,18 +100,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         Row(
           children: [
-            Text('Providers', style: theme.textTheme.titleMedium),
+            Text(context.l10n.providers, style: theme.textTheme.titleMedium),
             const Spacer(),
             TextButton.icon(
               onPressed: () => _editProvider(),
               icon: const Icon(Icons.add),
-              label: const Text('Add provider'),
+              label: Text(context.l10n.addProvider),
             ),
           ],
         ),
         const SizedBox(height: 8),
         if (_settings.providers.isEmpty)
-          const _EmptySettingsLine(label: 'No providers configured')
+          _EmptySettingsLine(label: context.l10n.noProviders)
         else
           for (final provider in _settings.providers)
             _SettingTile(
@@ -127,18 +131,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         Row(
           children: [
-            Text('Models', style: theme.textTheme.titleMedium),
+            Text(context.l10n.models, style: theme.textTheme.titleMedium),
             const Spacer(),
             TextButton.icon(
               onPressed: () => _editModel(),
               icon: const Icon(Icons.add),
-              label: const Text('Add model'),
+              label: Text(context.l10n.addModel),
             ),
           ],
         ),
         const SizedBox(height: 8),
         if (_settings.models.isEmpty)
-          const _EmptySettingsLine(label: 'No models configured')
+          _EmptySettingsLine(label: context.l10n.noModels)
         else
           for (final model in _settings.models)
             _SettingTile(
@@ -157,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Runtime', style: theme.textTheme.titleMedium),
+        Text(context.l10n.runtimeSection, style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -165,8 +169,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: TextFormField(
                 key: const Key('runtime-timeout-field'),
                 initialValue: runtime.requestTimeoutSeconds.toString(),
-                decoration: const InputDecoration(
-                  labelText: 'Timeout (seconds)',
+                decoration: InputDecoration(
+                  labelText: context.l10n.timeoutLabel,
                 ),
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
@@ -185,7 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: TextFormField(
                 key: const Key('runtime-retry-field'),
                 initialValue: runtime.retryCount.toString(),
-                decoration: const InputDecoration(labelText: 'Retry count'),
+                decoration: InputDecoration(labelText: context.l10n.retryCountLabel),
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
                   final parsed = int.tryParse(value.trim());
@@ -207,8 +211,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: TextFormField(
                 key: const Key('runtime-async-poll-field'),
                 initialValue: runtime.asyncPollIntervalSeconds.toString(),
-                decoration: const InputDecoration(
-                  labelText: 'Async poll (seconds)',
+                decoration: InputDecoration(
+                  labelText: context.l10n.asyncPollLabel,
                 ),
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
@@ -228,8 +232,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: TextFormField(
                 key: const Key('runtime-async-timeout-field'),
                 initialValue: runtime.asyncTimeoutSeconds.toString(),
-                decoration: const InputDecoration(
-                  labelText: 'Async timeout (seconds)',
+                decoration: InputDecoration(
+                  labelText: context.l10n.asyncTimeoutLabel,
                 ),
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
@@ -247,7 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 12),
         _buildActiveModelDropdown(
-          label: 'Active chat model',
+          label: context.l10n.activeChatModel,
           taskType: ModelTaskType.chat,
           selectedId: runtime.activeChatModelId,
           onChanged: (value) => _persist(
@@ -258,7 +262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 12),
         _buildActiveModelDropdown(
-          label: 'Active image model',
+          label: context.l10n.activeImageModel,
           taskType: ModelTaskType.image,
           selectedId: runtime.activeImageModelId,
           onChanged: (value) => _persist(
@@ -288,7 +292,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       initialValue: value,
       decoration: InputDecoration(labelText: label),
       items: [
-        const DropdownMenuItem<String?>(value: null, child: Text('None')),
+        DropdownMenuItem<String?>(value: null, child: Text(context.l10n.noneOption)),
         for (final model in candidates)
           DropdownMenuItem<String?>(value: model.id, child: Text(model.name)),
       ],
@@ -296,11 +300,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildLanguageSection(ThemeData theme) {
+    final l10n = context.l10n;
+    final current = localeSignal.value?.languageCode;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(l10n.language, style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String?>(
+          key: const Key('language-picker'),
+          initialValue: current,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(l10n.langSystem)),
+            DropdownMenuItem<String?>(value: 'en', child: Text(l10n.langEnglish)),
+            DropdownMenuItem<String?>(value: 'zh', child: Text(l10n.langChinese)),
+          ],
+          onChanged: (code) => setLocale(code == null ? null : Locale(code)),
+        ),
+      ],
+    );
+  }
+
   Widget _buildArchiveSection(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Workflow JSON', style: theme.textTheme.titleMedium),
+        Text(context.l10n.workflowJson, style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -309,7 +336,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             OutlinedButton.icon(
               onPressed: _exportCurrentGraph,
               icon: const Icon(Icons.download_outlined),
-              label: const Text('Export graph'),
+              label: Text(context.l10n.exportGraph),
             ),
           ],
         ),
@@ -319,9 +346,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           controller: _importController,
           minLines: 3,
           maxLines: 8,
-          decoration: const InputDecoration(
-            labelText: 'Paste workflow JSON to import',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: context.l10n.pasteJsonLabel,
+            border: const OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: 8),
@@ -329,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           key: const Key('workflow-import-button'),
           onPressed: _importWorkflow,
           icon: const Icon(Icons.upload_file_outlined),
-          label: const Text('Import into workbench'),
+          label: Text(context.l10n.importIntoWorkbench),
         ),
         if (_archiveError.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -370,7 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _importWorkflow() {
     final source = _importController.text.trim();
     if (source.isEmpty) {
-      setState(() => _archiveError = 'Paste workflow JSON first.');
+      setState(() => _archiveError = context.l10n.pasteFirst);
       return;
     }
     try {
@@ -395,14 +422,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       if (mounted) Navigator.of(context).maybePop();
     } on FormatException catch (error) {
-      setState(() => _archiveError = 'Invalid workflow JSON: ${error.message}');
+      setState(() => _archiveError = context.l10n.invalidWorkflowJson(error.message));
       widget.logs.add(
         LogLevel.error,
         'Workflow import failed: invalid JSON',
         scope: 'settings',
       );
     } catch (_) {
-      setState(() => _archiveError = 'Could not import workflow.');
+      setState(() => _archiveError = context.l10n.couldNotImport);
       widget.logs.add(
         LogLevel.error,
         'Workflow import failed',
@@ -521,13 +548,13 @@ class _SettingTile extends StatelessWidget {
         children: [
           if (onEdit != null)
             IconButton(
-              tooltip: 'Edit',
+              tooltip: context.l10n.editTooltip,
               icon: const Icon(Icons.edit_outlined),
               onPressed: onEdit,
             ),
           if (onDelete != null)
             IconButton(
-              tooltip: 'Delete',
+              tooltip: context.l10n.deleteTooltip,
               icon: const Icon(Icons.delete_outline),
               onPressed: onDelete,
             ),
@@ -639,7 +666,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      title: Text(widget.existing == null ? 'Add provider' : 'Edit provider'),
+      title: Text(widget.existing == null ? context.l10n.addProviderTitle : context.l10n.editProviderTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -647,24 +674,24 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
             TextField(
               key: const Key('provider-name-field'),
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
+              decoration: InputDecoration(labelText: context.l10n.nameLabel),
             ),
             TextField(
               key: const Key('provider-endpoint-field'),
               controller: _endpoint,
-              decoration: const InputDecoration(labelText: 'Endpoint'),
+              decoration: InputDecoration(labelText: context.l10n.endpointLabel),
             ),
             TextField(
               key: const Key('provider-apikey-field'),
               controller: _apiKey,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'API key'),
+              decoration: InputDecoration(labelText: context.l10n.apiKeyLabel),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<ModelProtocol>(
               key: const Key('provider-protocol-field'),
               initialValue: _protocol,
-              decoration: const InputDecoration(labelText: 'Protocol'),
+              decoration: InputDecoration(labelText: context.l10n.protocolLabel),
               items: const [
                 DropdownMenuItem(
                   value: ModelProtocol.openai,
@@ -689,7 +716,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
               child: TextButton.icon(
                 key: const Key('provider-test-button'),
                 icon: const Icon(Icons.wifi_tethering),
-                label: const Text('Test connection'),
+                label: Text(context.l10n.testConnection),
                 onPressed: _testConnection,
               ),
             ),
@@ -708,7 +735,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           key: const Key('provider-save-button'),
@@ -724,7 +751,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
               ),
             );
           },
-          child: const Text('Save'),
+          child: Text(context.l10n.save),
         ),
       ],
     );
@@ -774,7 +801,7 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
         ? selectedProvider
         : null;
     return AlertDialog(
-      title: Text(widget.existing == null ? 'Add model' : 'Edit model'),
+      title: Text(widget.existing == null ? context.l10n.addModelTitle : context.l10n.editModelTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -782,18 +809,18 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
             TextField(
               key: const Key('model-name-field'),
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
+              decoration: InputDecoration(labelText: context.l10n.nameLabel),
             ),
             TextField(
               key: const Key('model-id-field'),
               controller: _modelId,
-              decoration: const InputDecoration(labelText: 'Model ID'),
+              decoration: InputDecoration(labelText: context.l10n.modelIdLabel),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<ModelTaskType>(
               key: const Key('model-task-field'),
               initialValue: _taskType,
-              decoration: const InputDecoration(labelText: 'Task type'),
+              decoration: InputDecoration(labelText: context.l10n.taskTypeLabel),
               items: const [
                 DropdownMenuItem(
                   value: ModelTaskType.chat,
@@ -816,7 +843,7 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
             DropdownButtonFormField<ModelProtocol>(
               key: const Key('model-protocol-field'),
               initialValue: _protocol,
-              decoration: const InputDecoration(labelText: 'Protocol'),
+              decoration: InputDecoration(labelText: context.l10n.protocolLabel),
               items: const [
                 DropdownMenuItem(
                   value: ModelProtocol.openai,
@@ -839,11 +866,11 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
             DropdownButtonFormField<String?>(
               key: const Key('model-provider-field'),
               initialValue: providerValue,
-              decoration: const InputDecoration(labelText: 'Provider'),
+              decoration: InputDecoration(labelText: context.l10n.providerLabel),
               items: [
-                const DropdownMenuItem<String?>(
+                DropdownMenuItem<String?>(
                   value: null,
-                  child: Text('None'),
+                  child: Text(context.l10n.noneOption),
                 ),
                 for (final provider in widget.providers)
                   DropdownMenuItem<String?>(
@@ -861,7 +888,7 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           key: const Key('model-save-button'),
@@ -877,7 +904,7 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
               ),
             );
           },
-          child: const Text('Save'),
+          child: Text(context.l10n.save),
         ),
       ],
     );

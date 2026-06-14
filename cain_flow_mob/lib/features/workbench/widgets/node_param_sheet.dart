@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../../nodes/node_definition.dart';
 import '../../settings/provider_settings.dart';
 import '../workbench_signals.dart';
@@ -81,7 +82,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
                 ),
               ),
               IconButton(
-                tooltip: 'Delete node',
+                tooltip: context.l10n.deleteNode,
                 onPressed: widget.onDelete,
                 icon: Icon(Icons.delete_outline, color: theme.colorScheme.error),
               ),
@@ -96,7 +97,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
           const SizedBox(height: 12),
           if (params.isEmpty)
             Text(
-              'This node has no editable parameters.',
+              context.l10n.noEditableParams,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -168,7 +169,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
                     }
                   },
             icon: const Icon(Icons.videocam_outlined),
-            label: const Text('Edit'),
+            label: Text(context.l10n.editCamera),
           ),
         ],
       ),
@@ -186,7 +187,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
         children: [
           Expanded(
             child: Text(
-              currentId.isEmpty ? 'No image selected' : 'Selected: $currentId',
+              currentId.isEmpty ? context.l10n.noImageSelected : context.l10n.imageSelected(currentId),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
@@ -203,7 +204,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
                     }
                   },
             icon: const Icon(Icons.image_outlined),
-            label: const Text('Choose'),
+            label: Text(context.l10n.chooseImage),
           ),
         ],
       ),
@@ -248,7 +249,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
         for (final option in param.options)
           DropdownMenuItem(
             value: option,
-            child: Text(option.isEmpty ? '(default)' : option),
+            child: Text(option.isEmpty ? context.l10n.defaultOption : option),
           ),
       ],
       onChanged: (v) => _set(param.name, v ?? ''),
@@ -271,7 +272,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
           border: const OutlineInputBorder(),
         ),
         child: Text(
-          'No matching models configured',
+          context.l10n.noMatchingModels,
           style: Theme.of(context).textTheme.bodySmall,
         ),
       );
@@ -303,7 +304,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
       initialValue: text,
       maxLines: 5,
       decoration: InputDecoration(
-        labelText: '${param.label} (JSON)',
+        labelText: '${param.label} ${context.l10n.jsonSuffix}',
         hintText: '{"temperature": 0.7}',
         border: const OutlineInputBorder(),
         errorText: _customParamsError,
@@ -326,10 +327,10 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
         setState(() => _customParamsError = null);
         _set('customParams', Map<String, dynamic>.from(decoded));
       } else {
-        setState(() => _customParamsError = 'Must be a JSON object');
+        setState(() => _customParamsError = context.l10n.mustBeJsonObject);
       }
     } catch (_) {
-      setState(() => _customParamsError = 'Invalid JSON');
+      setState(() => _customParamsError = context.l10n.invalidJson);
     }
   }
 }

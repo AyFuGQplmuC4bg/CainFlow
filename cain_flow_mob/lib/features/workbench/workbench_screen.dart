@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:signals/signals_flutter.dart';
 
 import '../../app/theme/cain_tokens.dart';
+import '../../l10n/app_localizations.dart';
 
 import '../execution/cain_flow_node_executor.dart';
 import '../execution/execution_services.dart';
@@ -147,31 +148,31 @@ class WorkbenchScreen extends SignalWidget {
         ),
         actions: [
           IconButton(
-            tooltip: 'Import workflow',
+            tooltip: context.l10n.importWorkflow,
             onPressed: () => _showSettings(context),
             icon: const Icon(Icons.upload_file_outlined),
           ),
           IconButton(
-            tooltip: 'Undo',
+            tooltip: context.l10n.undo,
             onPressed: workbenchHistory.canUndo.value
                 ? workbenchHistory.undo
                 : null,
             icon: const Icon(Icons.undo_rounded),
           ),
           IconButton(
-            tooltip: 'Redo',
+            tooltip: context.l10n.redo,
             onPressed: workbenchHistory.canRedo.value
                 ? workbenchHistory.redo
                 : null,
             icon: const Icon(Icons.redo_rounded),
           ),
           IconButton(
-            tooltip: 'Save workflow',
+            tooltip: context.l10n.saveWorkflow,
             onPressed: () {
               final id = workflowManager.save();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Saved "${state.activeWorkflowName.value}"'),
+                  content: Text(context.l10n.savedWorkflowSnack(state.activeWorkflowName.value)),
                   duration: const Duration(seconds: 2),
                 ),
               );
@@ -184,7 +185,7 @@ class WorkbenchScreen extends SignalWidget {
             icon: const Icon(Icons.save_outlined),
           ),
           IconButton(
-            tooltip: 'Logs',
+            tooltip: context.l10n.logs,
             onPressed: () => _showLogs(context),
             icon: Icon(
               logSignals.hasErrors.value
@@ -193,7 +194,7 @@ class WorkbenchScreen extends SignalWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Settings',
+            tooltip: context.l10n.settings,
             onPressed: () => _showSettings(context),
             icon: const Icon(Icons.tune_rounded),
           ),
@@ -214,8 +215,8 @@ class WorkbenchScreen extends SignalWidget {
               ),
               label: Text(
                 state.runState.value == WorkbenchRunState.running
-                    ? 'Stop'
-                    : 'Run',
+                    ? context.l10n.stop
+                    : context.l10n.run,
               ),
             ),
           ),
@@ -275,7 +276,7 @@ Future<void> _showNodePicker(BuildContext context) async {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text('Add node', style: theme.textTheme.titleMedium),
+                child: Text(context.l10n.addNode, style: theme.textTheme.titleMedium),
               ),
               Flexible(
                 child: ListView(
@@ -359,9 +360,9 @@ void _handlePortTap(
   final rejection = state.completeConnection(nodeId, port.name, port.type);
   if (rejection != ConnectionRejection.none) {
     final message = switch (rejection) {
-      ConnectionRejection.selfConnection => 'Cannot connect a node to itself',
-      ConnectionRejection.typeMismatch => 'Port types do not match',
-      ConnectionRejection.cycle => 'That link would create a cycle',
+      ConnectionRejection.selfConnection => context.l10n.cannotConnectSelf,
+      ConnectionRejection.typeMismatch => context.l10n.portTypeMismatch,
+      ConnectionRejection.cycle => context.l10n.connectionCycle,
       ConnectionRejection.none => '',
     };
     ScaffoldMessenger.of(context).showSnackBar(
@@ -406,7 +407,7 @@ String _mimeForName(String name) {
 
 /// Prompts for a name and creates a new (empty) workflow.
 Future<void> _createWorkflow(BuildContext context) async {
-  final name = await _promptForName(context, title: 'New workflow');
+  final name = await _promptForName(context, title: context.l10n.newWorkflow);
   if (name == null || name.isEmpty) return;
   workflowManager.newWorkflow(name: name);
 }
@@ -421,12 +422,12 @@ Future<void> _workflowActions(BuildContext context, String id) async {
         children: [
           ListTile(
             leading: const Icon(Icons.edit_outlined),
-            title: const Text('Rename'),
+            title: Text(context.l10n.rename),
             onTap: () => Navigator.of(context).pop('rename'),
           ),
           ListTile(
             leading: const Icon(Icons.delete_outline),
-            title: const Text('Delete'),
+            title: Text(context.l10n.delete),
             onTap: () => Navigator.of(context).pop('delete'),
           ),
         ],
@@ -435,7 +436,7 @@ Future<void> _workflowActions(BuildContext context, String id) async {
   );
   if (action == 'rename') {
     if (!context.mounted) return;
-    final name = await _promptForName(context, title: 'Rename workflow');
+    final name = await _promptForName(context, title: context.l10n.renameWorkflow);
     if (name != null && name.isNotEmpty) workflowManager.rename(id, name);
   } else if (action == 'delete') {
     await workflowManager.delete(id);
@@ -454,18 +455,18 @@ Future<String?> _promptForName(
       content: TextField(
         controller: controller,
         autofocus: true,
-        decoration: const InputDecoration(labelText: 'Name'),
+        decoration: InputDecoration(labelText: context.l10n.nameLabel),
         onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           onPressed: () =>
               Navigator.of(context).pop(controller.text.trim()),
-          child: const Text('OK'),
+          child: Text(context.l10n.ok),
         ),
       ],
     ),
@@ -510,17 +511,17 @@ class _WorkflowRail extends SignalWidget {
         builder: (context, constraints) {
           final isCompact = constraints.maxHeight < 260;
           final content = [
-            Text('Workflows', style: theme.textTheme.titleMedium),
+            Text(context.l10n.workflows, style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
             _RailAction(
               icon: Icons.add_rounded,
-              label: 'Add node',
+              label: context.l10n.addNode,
               onTap: () => _showNodePicker(context),
             ),
             const SizedBox(height: 8),
             _RailAction(
               icon: Icons.note_add_outlined,
-              label: 'New workflow',
+              label: context.l10n.newWorkflow,
               onTap: () => _createWorkflow(context),
             ),
             const SizedBox(height: 8),
@@ -548,7 +549,7 @@ class _WorkflowRail extends SignalWidget {
             if (!isCompact) ...[
               const Spacer(),
               Text(
-                'Long-press a workflow to rename or delete',
+                context.l10n.workflowHint,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -659,7 +660,7 @@ class _CanvasStage extends SignalWidget {
             left: 16,
             bottom: 16,
             child: _StatusChip(
-              label: _executionStatusLabel(executionSignals.workflowState.value),
+              label: _executionStatusLabel(executionSignals.workflowState.value, context.l10n),
               value: executionSignals.isRunning.value
                   ? '${executionSignals.completedCount.value}/'
                       '${executionSignals.totalCount.value}'
@@ -757,7 +758,7 @@ class _RunTimerOverlay extends SignalWidget {
               onPressed: () => workbenchExecutionController.stop(),
               style: TextButton.styleFrom(foregroundColor: CainTokens.danger),
               icon: const Icon(Icons.stop_rounded, size: 18),
-              label: const Text('取消'),
+              label: Text(context.l10n.cancelRun),
             ),
           ],
         ),
@@ -782,11 +783,11 @@ class _InspectorRail extends SignalWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Inspector', style: theme.textTheme.titleMedium),
+            Text(context.l10n.inspector, style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
             if (selected == null)
               Text(
-                'Select a node to edit its settings.',
+                context.l10n.selectNodeHint,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -809,7 +810,7 @@ class _InspectorRail extends SignalWidget {
               OutlinedButton.icon(
                 onPressed: state.clearSelection,
                 icon: const Icon(Icons.close_rounded),
-                label: const Text('Clear selection'),
+                label: Text(context.l10n.clearSelection),
               ),
             ],
           ],
@@ -921,7 +922,7 @@ class _CanvasControls extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            tooltip: 'Zoom out',
+            tooltip: context.l10n.zoomOut,
             onPressed: onZoomOut,
             icon: const Icon(Icons.remove_rounded, size: 18),
           ),
@@ -934,7 +935,7 @@ class _CanvasControls extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Zoom in',
+            tooltip: context.l10n.zoomIn,
             onPressed: onZoomIn,
             icon: const Icon(Icons.add_rounded, size: 18),
           ),
@@ -1020,23 +1021,23 @@ Color _statusColor(WorkflowExecutionState state) {
   };
 }
 
-String _executionStatusLabel(WorkflowExecutionState state) {
+String _executionStatusLabel(WorkflowExecutionState state, AppLocalizations l10n) {
   return switch (state) {
-    WorkflowExecutionState.idle => 'Ready',
-    WorkflowExecutionState.running => 'Running',
-    WorkflowExecutionState.completed => 'Completed',
-    WorkflowExecutionState.failed => 'Failed',
-    WorkflowExecutionState.canceled => 'Canceled',
+    WorkflowExecutionState.idle => l10n.statusReady,
+    WorkflowExecutionState.running => l10n.statusRunning,
+    WorkflowExecutionState.completed => l10n.statusCompleted,
+    WorkflowExecutionState.failed => l10n.statusFailed,
+    WorkflowExecutionState.canceled => l10n.statusCanceled,
   };
 }
 
-String _nodeStateLabel(NodeRunState state) {
+String _nodeStateLabel(NodeRunState state, AppLocalizations l10n) {
   return switch (state) {
-    NodeRunState.pending => 'Pending',
-    NodeRunState.running => 'Running',
-    NodeRunState.completed => 'Completed',
-    NodeRunState.failed => 'Failed',
-    NodeRunState.skipped => 'Skipped',
+    NodeRunState.pending => l10n.statePending,
+    NodeRunState.running => l10n.statusRunning,
+    NodeRunState.completed => l10n.statusCompleted,
+    NodeRunState.failed => l10n.statusFailed,
+    NodeRunState.skipped => l10n.stateSkipped,
   };
 }
 
@@ -1050,7 +1051,7 @@ class _NodeStatusLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final snap = snapshot;
-    final label = snap == null ? 'Pending' : _nodeStateLabel(snap.state);
+    final label = snap == null ? context.l10n.statePending : _nodeStateLabel(snap.state, context.l10n);
     final color = switch (snap?.state) {
       NodeRunState.failed => theme.colorScheme.error,
       NodeRunState.completed => Colors.green,
@@ -1060,8 +1061,8 @@ class _NodeStatusLine extends StatelessWidget {
     final durationText = duration == null
         ? null
         : (snap!.state == NodeRunState.running
-            ? '已运行 ${(duration.inMilliseconds / 1000).toStringAsFixed(1)}s'
-            : '耗时 ${(duration.inMilliseconds / 1000).toStringAsFixed(2)}s');
+            ? context.l10n.runningDuration((duration.inMilliseconds / 1000).toStringAsFixed(1))
+            : context.l10n.elapsedDuration((duration.inMilliseconds / 1000).toStringAsFixed(2)));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1070,7 +1071,7 @@ class _NodeStatusLine extends StatelessWidget {
           children: [
             Icon(Icons.circle, size: 10, color: color),
             const SizedBox(width: 8),
-            Text('Status: $label', style: theme.textTheme.bodyMedium),
+            Text(context.l10n.statusLabel(label), style: theme.textTheme.bodyMedium),
           ],
         ),
         if (durationText != null) ...[

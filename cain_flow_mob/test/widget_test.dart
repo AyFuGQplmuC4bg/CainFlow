@@ -8,6 +8,8 @@ import 'package:cain_flow_mob/features/workbench/workbench_screen.dart';
 void main() {
   testWidgets('renders CainFlow workbench shell', (tester) async {
     await tester.pumpWidget(const CainFlowApp());
+    // GlobalMaterialLocalizations.delegate loads asynchronously; settle it.
+    await tester.pumpAndSettle();
 
     expect(find.text('CAINFLOW'), findsOneWidget);
     expect(find.text('Untitled Workflow'), findsAtLeastNWidgets(1));
