@@ -102,6 +102,7 @@ class RuntimeSettings {
     this.activeImageModelId = '',
     this.asyncPollIntervalSeconds = 2,
     this.asyncTimeoutSeconds = 300,
+    this.maxConcurrency = 1,
   });
 
   factory RuntimeSettings.defaults() => const RuntimeSettings();
@@ -114,6 +115,7 @@ class RuntimeSettings {
       activeImageModelId: json['activeImageModelId']?.toString() ?? '',
       asyncPollIntervalSeconds: _intFrom(json['asyncPollIntervalSeconds'], 2),
       asyncTimeoutSeconds: _intFrom(json['asyncTimeoutSeconds'], 300),
+      maxConcurrency: _intFrom(json['maxConcurrency'], 1),
     );
   }
 
@@ -123,6 +125,7 @@ class RuntimeSettings {
   final String activeImageModelId;
   final int asyncPollIntervalSeconds;
   final int asyncTimeoutSeconds;
+  final int maxConcurrency;
 
   RuntimeSettings copyWith({
     int? requestTimeoutSeconds,
@@ -131,6 +134,7 @@ class RuntimeSettings {
     String? activeImageModelId,
     int? asyncPollIntervalSeconds,
     int? asyncTimeoutSeconds,
+    int? maxConcurrency,
   }) {
     return RuntimeSettings(
       requestTimeoutSeconds:
@@ -141,6 +145,7 @@ class RuntimeSettings {
       asyncPollIntervalSeconds:
           asyncPollIntervalSeconds ?? this.asyncPollIntervalSeconds,
       asyncTimeoutSeconds: asyncTimeoutSeconds ?? this.asyncTimeoutSeconds,
+      maxConcurrency: maxConcurrency ?? this.maxConcurrency,
     );
   }
 
@@ -152,6 +157,7 @@ class RuntimeSettings {
       'activeImageModelId': activeImageModelId,
       'asyncPollIntervalSeconds': asyncPollIntervalSeconds,
       'asyncTimeoutSeconds': asyncTimeoutSeconds,
+      'maxConcurrency': maxConcurrency,
     };
   }
 }

@@ -20,6 +20,7 @@ import '../../core/storage/in_memory_local_kv_store.dart';
 import '../../core/storage/local_kv_store.dart';
 import '../../core/storage/mmkv_local_kv_store.dart';
 import 'workbench_execution_controller.dart';
+import 'workbench_history.dart';
 import 'workbench_signals.dart';
 import 'connection_rules.dart';
 import 'widgets/connection_layer.dart';
@@ -32,9 +33,10 @@ import 'widgets/node_param_sheet.dart';
 WorkbenchExecutionController _buildDefaultController() {
   final store = _safeStore();
   final settingsRepository = ProviderSettingsRepository(store: store);
+  final runtime = settingsRepository.load().runtime;
   final ProviderClient client = RetryingProviderClient(
     inner: DartIoProviderClient(),
-    maxRetries: settingsRepository.load().runtime.retryCount,
+    maxRetries: runtime.retryCount,
   );
   final services = ExecutionServices(
     settingsRepository: settingsRepository,
@@ -47,12 +49,20 @@ WorkbenchExecutionController _buildDefaultController() {
     executor: CainFlowNodeExecutor(services: services),
     executionSignals: executionSignals,
     logs: logSignals,
+    maxConcurrency: runtime.maxConcurrency,
   );
 }
 
 WorkbenchExecutionController? _defaultController;
 WorkbenchExecutionController get workbenchExecutionController =>
     _defaultController ??= _buildDefaultController();
+
+/// Global undo/redo history bound to the shared workbench signals.
+final WorkbenchHistory workbenchHistory = () {
+  final history = WorkbenchHistory(workbench: workbenchSignals);
+  workbenchSignals.onBeforeMutation = history.record;
+  return history;
+}();
 
 /// Lazily-built workflow manager backed by MMKV, used by the Workflows rail.
 WorkflowManager? _defaultWorkflowManager;
@@ -112,6 +122,20 @@ class WorkbenchScreen extends SignalWidget {
             tooltip: 'Import workflow',
             onPressed: () => _showSettings(context),
             icon: const Icon(Icons.upload_file_outlined),
+          ),
+          IconButton(
+            tooltip: 'Undo',
+            onPressed: workbenchHistory.canUndo.value
+                ? workbenchHistory.undo
+                : null,
+            icon: const Icon(Icons.undo_rounded),
+          ),
+          IconButton(
+            tooltip: 'Redo',
+            onPressed: workbenchHistory.canRedo.value
+                ? workbenchHistory.redo
+                : null,
+            icon: const Icon(Icons.redo_rounded),
           ),
           IconButton(
             tooltip: 'Save workflow',

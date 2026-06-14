@@ -111,6 +111,78 @@ void main() {
     expect(signals.nodeStates.value['a']?.state, NodeRunState.skipped);
     expect(signals.nodeStates.value['b']?.state, NodeRunState.skipped);
   });
+
+  group('concurrent execution', () {
+    test('runs independent nodes in parallel up to the limit', () async {
+      final signals = ExecutionSignals();
+      var active = 0;
+      var peak = 0;
+      final executor = _FakeNodeExecutor(
+        onExecute: (node, context) async {
+          active += 1;
+          if (active > peak) peak = active;
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+          active -= 1;
+          return NodeExecutionResult.empty(node.id);
+        },
+      );
+      final runner = WorkflowRunner(
+        executor: executor,
+        signals: signals,
+        maxConcurrency: 3,
+      );
+
+      // Three independent source nodes feeding one sink.
+      final result = await runner.run(
+        _workflow(
+          nodes: const [
+            FlowNode(id: 'a', type: 'Text', x: 0, y: 0),
+            FlowNode(id: 'b', type: 'Text', x: 0, y: 0),
+            FlowNode(id: 'c', type: 'Text', x: 0, y: 0),
+            FlowNode(id: 'sink', type: 'TextMerge', x: 0, y: 0),
+          ],
+          connections: [
+            _connection('a_s', 'a', 'text', 'sink', 'text_1'),
+            _connection('b_s', 'b', 'text', 'sink', 'text_2'),
+            _connection('c_s', 'c', 'text', 'sink', 'text_3'),
+          ],
+        ),
+      );
+
+      expect(result.state, WorkflowExecutionState.completed);
+      expect(peak, greaterThan(1));
+      // Sink runs only after its three deps.
+      expect(executor.calls.last, 'sink');
+    });
+
+    test('a failure in a parallel batch fails the workflow', () async {
+      final signals = ExecutionSignals();
+      final executor = _FakeNodeExecutor(
+        onExecute: (node, context) async {
+          if (node.id == 'b') throw StateError('boom');
+          return NodeExecutionResult.empty(node.id);
+        },
+      );
+      final runner = WorkflowRunner(
+        executor: executor,
+        signals: signals,
+        maxConcurrency: 3,
+      );
+
+      final result = await runner.run(
+        _workflow(
+          nodes: const [
+            FlowNode(id: 'a', type: 'Text', x: 0, y: 0),
+            FlowNode(id: 'b', type: 'Text', x: 0, y: 0),
+          ],
+          connections: const [],
+        ),
+      );
+
+      expect(result.state, WorkflowExecutionState.failed);
+      expect(signals.nodeStates.value['b']?.state, NodeRunState.failed);
+    });
+  });
 }
 
 class _FakeNodeExecutor implements NodeExecutor {

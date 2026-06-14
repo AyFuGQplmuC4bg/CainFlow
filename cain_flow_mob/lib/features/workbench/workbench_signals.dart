@@ -144,6 +144,13 @@ class PendingConnection {
 
 class WorkbenchSignals {
   WorkbenchSignals();
+
+  /// Invoked just before a structural graph mutation (add/remove node or
+  /// connection, data edit) so an undo history can capture the prior state.
+  /// Node drags and pan/zoom are intentionally excluded.
+  void Function()? onBeforeMutation;
+
+  void _recordMutation() => onBeforeMutation?.call();
   final activeWorkflowName = signal('Untitled Workflow');
   final nodes = signal<List<WorkbenchNode>>(const [
     WorkbenchNode(
@@ -227,6 +234,7 @@ class WorkbenchSignals {
 
   /// Replaces the parameter map of [nodeId] with [data].
   void updateNodeData(String nodeId, Map<String, dynamic> data) {
+    _recordMutation();
     nodes.value = [
       for (final node in nodes.value)
         if (node.id == nodeId) node.withData(Map<String, dynamic>.from(data)) else node,
@@ -236,6 +244,7 @@ class WorkbenchSignals {
   /// Adds a node of [type] at [position] (defaults to a spread-out spot),
   /// seeded with the definition's default data. Returns the new node id.
   String addNode(String type, {NodeOffset? position}) {
+    _recordMutation();
     final definition = nodeRegistry.get(type);
     final id = 'node_${type}_${DateTime.now().microsecondsSinceEpoch}';
     final spot = position ?? _nextNodeSpot();
@@ -253,6 +262,7 @@ class WorkbenchSignals {
 
   /// Removes [nodeId] and every connection touching it.
   void removeNode(String nodeId) {
+    _recordMutation();
     nodes.value = [
       for (final node in nodes.value)
         if (node.id != nodeId) node,
@@ -316,6 +326,7 @@ class WorkbenchSignals {
     final type = pending.type.isNotEmpty ? pending.type : toType;
     final id =
         'conn_${pending.fromNodeId}_${pending.fromPort}_to_${toNodeId}_$toPort';
+    _recordMutation();
     connections.value = [
       // Drop any existing edge feeding the same input port.
       for (final c in connections.value)
@@ -334,6 +345,7 @@ class WorkbenchSignals {
   }
 
   void removeConnection(String connectionId) {
+    _recordMutation();
     connections.value = [
       for (final c in connections.value)
         if (c.id != connectionId) c,

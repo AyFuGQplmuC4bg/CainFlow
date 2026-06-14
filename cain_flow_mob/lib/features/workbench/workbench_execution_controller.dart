@@ -14,6 +14,7 @@ class WorkbenchExecutionController {
     required this.executor,
     ExecutionSignals? executionSignals,
     LogSignals? logs,
+    this.maxConcurrency = 1,
   }) : executionSignals = executionSignals ?? ExecutionSignals(),
        logs = logs ?? logSignals;
 
@@ -21,6 +22,9 @@ class WorkbenchExecutionController {
   final NodeExecutor executor;
   final ExecutionSignals executionSignals;
   final LogSignals logs;
+
+  /// Resolved per-run from settings by the screen; 1 keeps serial execution.
+  final int maxConcurrency;
 
   WorkflowRunner? _runner;
   bool _isRunning = false;
@@ -33,7 +37,11 @@ class WorkbenchExecutionController {
     workbench.runState.value = WorkbenchRunState.running;
 
     final workflow = workbenchSignalsToWorkflow(workbench);
-    final runner = WorkflowRunner(executor: executor, signals: executionSignals);
+    final runner = WorkflowRunner(
+      executor: executor,
+      signals: executionSignals,
+      maxConcurrency: maxConcurrency,
+    );
     _runner = runner;
 
     logs.add(
