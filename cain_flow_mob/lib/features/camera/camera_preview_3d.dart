@@ -61,11 +61,16 @@ class CameraPreview3D extends StatefulWidget {
     required this.state,
     this.referenceImage,
     this.onStateChanged,
+    this.maxHeight = 200,
   });
 
   final CameraState state;
   final ui.Image? referenceImage;
   final ValueChanged<CameraState>? onStateChanged;
+
+  /// Caps the preview height so it shares one screen with the sliders. The 4:3
+  /// frame is centered and width-derived from this height.
+  final double maxHeight;
 
   @override
   State<CameraPreview3D> createState() => _CameraPreview3DState();
@@ -110,20 +115,25 @@ class _CameraPreview3DState extends State<CameraPreview3D> {
   @override
   Widget build(BuildContext context) {
     final palette = CameraPreviewPalette.fromTheme(Theme.of(context));
-    return GestureDetector(
-      onScaleStart: widget.onStateChanged == null ? null : _onScaleStart,
-      onScaleUpdate: widget.onStateChanged == null ? null : _onScaleUpdate,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: AspectRatio(
-          aspectRatio: 4 / 3,
-          child: CustomPaint(
-            painter: CameraScenePainter(
-              state: widget.state,
-              referenceImage: widget.referenceImage,
-              palette: palette,
+    return Center(
+      child: GestureDetector(
+        onScaleStart: widget.onStateChanged == null ? null : _onScaleStart,
+        onScaleUpdate: widget.onStateChanged == null ? null : _onScaleUpdate,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            height: widget.maxHeight,
+            child: AspectRatio(
+              aspectRatio: 4 / 3,
+              child: CustomPaint(
+                painter: CameraScenePainter(
+                  state: widget.state,
+                  referenceImage: widget.referenceImage,
+                  palette: palette,
+                ),
+                child: const SizedBox.expand(),
+              ),
             ),
-            child: const SizedBox.expand(),
           ),
         ),
       ),
