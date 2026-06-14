@@ -230,24 +230,39 @@ Future<void> _showLogs(BuildContext context) {
 Future<void> _showNodePicker(BuildContext context) async {
   final type = await showModalBottomSheet<String>(
     context: context,
+    isScrollControlled: true,
     builder: (context) {
       final theme = Theme.of(context);
+      // Cap the sheet at 70% of screen height; the node list scrolls inside.
+      final maxHeight = MediaQuery.of(context).size.height * 0.7;
       return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text('Add node', style: theme.textTheme.titleMedium),
-            ),
-            for (final definition in nodeRegistry.all)
-              ListTile(
-                title: Text(definition.title),
-                subtitle: Text(definition.description),
-                onTap: () => Navigator.of(context).pop(definition.type),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text('Add node', style: theme.textTheme.titleMedium),
               ),
-          ],
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (final definition in nodeRegistry.all)
+                      ListTile(
+                        title: Text(definition.title),
+                        subtitle: Text(definition.description),
+                        onTap: () =>
+                            Navigator.of(context).pop(definition.type),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       );
     },
