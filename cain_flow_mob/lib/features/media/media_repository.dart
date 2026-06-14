@@ -130,6 +130,9 @@ class MediaRepository {
     return root;
   }
 
+  /// Public accessor for the resolved media root directory.
+  Future<Directory> mediaRoot() => _mediaRoot();
+
   void _saveIndex(List<MediaAsset> assets) {
     store.setString(
       StorageKeys.mediaAssetIndex,

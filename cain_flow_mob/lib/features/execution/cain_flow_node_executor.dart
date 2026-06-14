@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import '../../core/models/flow_node.dart';
 import '../../core/network/provider_client.dart';
 import '../logs/log_signals.dart';
+import '../media/image_ops.dart';
 import '../media/media_asset.dart';
 import '../settings/provider_settings.dart';
 import 'async_image_protocol.dart';
@@ -26,6 +28,10 @@ class CainFlowNodeExecutor implements NodeExecutor {
     switch (node.type) {
       case 'Text':
         return _executeText(node);
+      case 'TextMerge':
+        return _executeTextMerge(node, context);
+      case 'TextSplit':
+        return _executeTextSplit(node, context);
       case 'TextChat':
         return _executeTextChat(node, context);
       case 'ImageImport':
@@ -34,6 +40,12 @@ class CainFlowNodeExecutor implements NodeExecutor {
         return _executeImageGenerate(node, context);
       case 'ImagePreview':
         return _executeImagePreview(node, context);
+      case 'ImageResize':
+        return _executeImageResize(node, context);
+      case 'ImageMerge':
+        return _executeImageMerge(node, context);
+      case 'ImageCompare':
+        return _executeImageCompare(node, context);
       case 'ImageSave':
         return _executeImageSave(node, context);
       default:
@@ -45,6 +57,44 @@ class CainFlowNodeExecutor implements NodeExecutor {
     final value =
         _stringFrom(node.data['text']) ?? _stringFrom(node.extra['text']) ?? '';
     return NodeExecutionResult(nodeId: node.id, outputs: {'text': value});
+  }
+
+  /// Concatenates connected text inputs (text_1..n) with a separator.
+  NodeExecutionResult _executeTextMerge(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) {
+    final separator = _unescape(_stringFrom(node.data['separator']) ?? '\n');
+    final parts = <String>[];
+    for (final entry in context.inputs.entries) {
+      if (entry.key.startsWith('text')) {
+        final value = _stringFrom(entry.value);
+        if (value != null && value.isNotEmpty) parts.add(value);
+      }
+    }
+    return NodeExecutionResult(
+      nodeId: node.id,
+      outputs: {'text': parts.join(separator)},
+    );
+  }
+
+  /// Splits the input text by a separator into part_1..3 outputs.
+  NodeExecutionResult _executeTextSplit(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) {
+    final separator = _unescape(_stringFrom(node.data['separator']) ?? '\n');
+    final input = _stringFrom(context.inputs['text']) ??
+        _stringFrom(node.data['text']) ??
+        '';
+    final pieces = separator.isEmpty
+        ? [input]
+        : input.split(separator);
+    final outputs = <String, dynamic>{};
+    for (var i = 0; i < 3; i++) {
+      outputs['part_${i + 1}'] = i < pieces.length ? pieces[i] : '';
+    }
+    return NodeExecutionResult(nodeId: node.id, outputs: outputs);
   }
 
   /// ImageImport resolves the asset chosen in the editor (stored as
@@ -78,6 +128,98 @@ class CainFlowNodeExecutor implements NodeExecutor {
       nodeId: node.id,
       outputs: input == null ? const {} : {'image': input},
     );
+  }
+
+  /// Resizes the input image to the configured box and saves the result.
+  Future<NodeExecutionResult> _executeImageResize(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) async {
+    final bytes = await _loadImageBytes(context.inputs['image']);
+    final width = _intFrom(node.data['width']) ?? 512;
+    final height = _intFrom(node.data['height']) ?? 512;
+    final fit = switch (_stringFrom(node.data['fit'])) {
+      'cover' => ImageFit.cover,
+      'stretch' => ImageFit.stretch,
+      _ => ImageFit.contain,
+    };
+    final out = ImageOps.resize(bytes, width: width, height: height, fit: fit);
+    final payload = await _saveImageBytes(out, fileNameSeed: '${node.id}-resize');
+    return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
+  }
+
+  /// Merges connected image inputs (image_1..n) into one image.
+  Future<NodeExecutionResult> _executeImageMerge(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) async {
+    final keys = context.inputs.keys.where((k) => k.startsWith('image')).toList()
+      ..sort();
+    final images = <Uint8List>[];
+    for (final key in keys) {
+      images.add(await _loadImageBytes(context.inputs[key]));
+    }
+    if (images.isEmpty) {
+      throw StateError('ImageMerge node ${node.id} has no image inputs');
+    }
+    final layout = switch (_stringFrom(node.data['layout'])) {
+      'vertical' => MergeLayout.vertical,
+      'grid' => MergeLayout.grid,
+      _ => MergeLayout.horizontal,
+    };
+    final out = ImageOps.merge(images, layout: layout);
+    final payload = await _saveImageBytes(out, fileNameSeed: '${node.id}-merge');
+    return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
+  }
+
+  /// Places imageA and imageB side by side.
+  Future<NodeExecutionResult> _executeImageCompare(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) async {
+    final a = await _loadImageBytes(context.inputs['imageA']);
+    final b = await _loadImageBytes(context.inputs['imageB']);
+    final out = ImageOps.compare(a, b);
+    final payload = await _saveImageBytes(out, fileNameSeed: '${node.id}-compare');
+    return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
+  }
+
+  /// Resolves an image payload (`{kind: asset|url|b64}`) into raw bytes.
+  /// Asset payloads read the local file; url payloads are downloaded.
+  Future<Uint8List> _loadImageBytes(Object? input) async {
+    if (input is Map) {
+      final map = Map<String, dynamic>.from(input);
+      final kind = _stringFrom(map['kind']);
+      if (kind == 'asset') {
+        final relativePath = _stringFrom(map['relativePath']) ?? '';
+        final root = await services.mediaRepository.mediaRoot();
+        final file = File(
+          '${root.path}${Platform.pathSeparator}$relativePath',
+        );
+        return Uint8List.fromList(await file.readAsBytes());
+      }
+      final b64 = _stringFrom(map['b64_json']) ?? _stringFrom(map['base64']);
+      if (b64 != null && b64.isNotEmpty) {
+        return Uint8List.fromList(base64Decode(_stripDataUri(b64)));
+      }
+    }
+    if (input is String && input.isNotEmpty) {
+      return Uint8List.fromList(base64Decode(_stripDataUri(input)));
+    }
+    throw StateError('No decodable image input available');
+  }
+
+  Future<Map<String, dynamic>> _saveImageBytes(
+    Uint8List bytes, {
+    required String fileNameSeed,
+  }) async {
+    final asset = await services.mediaRepository.saveBytes(
+      workflowId: services.workflowId,
+      fileName: '$fileNameSeed.png',
+      mimeType: 'image/png',
+      bytes: bytes,
+    );
+    return _assetPayload(asset);
   }
 
   Future<NodeExecutionResult> _executeTextChat(
@@ -530,6 +672,22 @@ String? _stringFrom(Object? value) {
   if (value == null) return null;
   if (value is String) return value;
   return value.toString();
+}
+
+/// Converts literal escape sequences typed in a text field (`\n`, `\t`) into
+/// their control characters so separators behave as expected.
+String _unescape(String value) {
+  return value
+      .replaceAll(r'\n', '\n')
+      .replaceAll(r'\t', '\t')
+      .replaceAll(r'\r', '\r');
+}
+
+int? _intFrom(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim());
+  return null;
 }
 
 /// Normalizes a node's `customParams` entry into a request param map.

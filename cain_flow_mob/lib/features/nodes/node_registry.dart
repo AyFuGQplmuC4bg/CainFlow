@@ -132,4 +132,112 @@ const nodeRegistry = NodeRegistry([
       NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
     ],
   ),
+  NodeDefinition(
+    type: 'TextMerge',
+    title: 'Text Merge',
+    description: 'Concatenate up to three text inputs.',
+    inputPorts: [
+      NodePortDefinition(name: 'text_1', type: 'text', label: 'Text 1'),
+      NodePortDefinition(name: 'text_2', type: 'text', label: 'Text 2'),
+      NodePortDefinition(name: 'text_3', type: 'text', label: 'Text 3'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'text', type: 'text', label: 'Merged'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'separator',
+        label: 'Separator',
+        control: NodeParamControl.text,
+        defaultValue: '\n',
+      ),
+    ],
+  ),
+  NodeDefinition(
+    type: 'TextSplit',
+    title: 'Text Split',
+    description: 'Split text into up to three parts by a separator.',
+    inputPorts: [
+      NodePortDefinition(name: 'text', type: 'text', label: 'Text'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'part_1', type: 'text', label: 'Part 1'),
+      NodePortDefinition(name: 'part_2', type: 'text', label: 'Part 2'),
+      NodePortDefinition(name: 'part_3', type: 'text', label: 'Part 3'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'separator',
+        label: 'Separator',
+        control: NodeParamControl.text,
+        defaultValue: '\n',
+      ),
+    ],
+  ),
+  NodeDefinition(
+    type: 'ImageResize',
+    title: 'Image Resize',
+    description: 'Scale an image to a target size.',
+    inputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'width',
+        label: 'Width',
+        control: NodeParamControl.number,
+        defaultValue: 512,
+      ),
+      NodeParamDefinition(
+        name: 'height',
+        label: 'Height',
+        control: NodeParamControl.number,
+        defaultValue: 512,
+      ),
+      NodeParamDefinition(
+        name: 'fit',
+        label: 'Fit',
+        control: NodeParamControl.select,
+        options: ['contain', 'cover', 'stretch'],
+        defaultValue: 'contain',
+      ),
+    ],
+  ),
+  NodeDefinition(
+    type: 'ImageMerge',
+    title: 'Image Merge',
+    description: 'Combine up to three images into one.',
+    inputPorts: [
+      NodePortDefinition(name: 'image_1', type: 'image', label: 'Image 1'),
+      NodePortDefinition(name: 'image_2', type: 'image', label: 'Image 2'),
+      NodePortDefinition(name: 'image_3', type: 'image', label: 'Image 3'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Merged'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'layout',
+        label: 'Layout',
+        control: NodeParamControl.select,
+        options: ['horizontal', 'vertical', 'grid'],
+        defaultValue: 'horizontal',
+      ),
+    ],
+  ),
+  NodeDefinition(
+    type: 'ImageCompare',
+    title: 'Image Compare',
+    description: 'Place two images side by side.',
+    inputPorts: [
+      NodePortDefinition(name: 'imageA', type: 'image', label: 'Image A'),
+      NodePortDefinition(name: 'imageB', type: 'image', label: 'Image B'),
+    ],
+    outputPorts: [
+      NodePortDefinition(name: 'image', type: 'image', label: 'Comparison'),
+    ],
+  ),
 ]);
