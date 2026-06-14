@@ -134,6 +134,13 @@ abstract class AppLocalizations {
   String get mustBeJsonObject;
   String get invalidJson;
   String get jsonSuffix;
+
+  // --- Log panel ---
+  String get clearLogs;
+  String get noLogsYet;
+
+  // --- Compact overflow menu ---
+  String get moreActions;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +245,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override String get mustBeJsonObject => 'Must be a JSON object';
   @override String get invalidJson => 'Invalid JSON';
   @override String get jsonSuffix => '(JSON)';
+  @override String get clearLogs => 'Clear logs';
+  @override String get noLogsYet => 'No logs yet';
+  @override String get moreActions => 'More';
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +352,9 @@ class AppLocalizationsZh extends AppLocalizations {
   @override String get mustBeJsonObject => '必须是 JSON 对象';
   @override String get invalidJson => 'JSON 格式无效';
   @override String get jsonSuffix => '(JSON)';
+  @override String get clearLogs => '清除日志';
+  @override String get noLogsYet => '暂无日志';
+  @override String get moreActions => '更多';
 }
 
 // ---------------------------------------------------------------------------

@@ -146,42 +146,113 @@ class WorkbenchScreen extends SignalWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 860;
+    return isCompact ? _buildCompact(context) : _buildWide(context);
+  }
+
+  // ---- Compact scaffold (phone / narrow tablet) ----------------------------
+
+  Widget _buildCompact(BuildContext context) {
     final state = workbenchSignals;
+    // Read signals here so the scaffold reacts to state changes.
+    final running = state.runState.value == WorkbenchRunState.running;
+    final canUndo = workbenchHistory.canUndo.value;
+    final canRedo = workbenchHistory.canRedo.value;
+    final hasErrors = logSignals.hasErrors.value;
+    final workflowName = state.activeWorkflowName.value;
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Phosphor mark before the wordmark, like an instrument power LED.
-            Container(
-              width: 9,
-              height: 9,
-              margin: const EdgeInsets.only(right: 10, top: 2),
-              decoration: BoxDecoration(
-                color: CainTokens.phosphor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: CainTokens.phosphor.withValues(alpha: 0.7),
-                    blurRadius: 8,
-                  ),
-                ],
+        // DrawerButton auto-inserted when drawer is set and leading is null.
+        title: _AppTitle(workflowName: workflowName),
+        actions: [
+          IconButton(
+            tooltip: context.l10n.addNode,
+            onPressed: () => _showNodePicker(context),
+            icon: const Icon(Icons.add_rounded),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: FilledButton.icon(
+              onPressed: running ? _controller.stop : _controller.run,
+              icon: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded),
+              label: Text(running ? context.l10n.stop : context.l10n.run),
+            ),
+          ),
+          PopupMenuButton<_OverflowAction>(
+            tooltip: context.l10n.moreActions,
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (action) => _handleOverflow(context, action),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: _OverflowAction.undo,
+                enabled: canUndo,
+                child: _OverflowItem(Icons.undo_rounded, context.l10n.undo),
               ),
-            ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('CAINFLOW'),
-                Text(
-                  state.activeWorkflowName.value,
-                  style: CainTokens.mono(10.5, color: CainTokens.inkFaint),
+              PopupMenuItem(
+                value: _OverflowAction.redo,
+                enabled: canRedo,
+                child: _OverflowItem(Icons.redo_rounded, context.l10n.redo),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: _OverflowAction.save,
+                child: _OverflowItem(Icons.save_outlined, context.l10n.saveWorkflow),
+              ),
+              PopupMenuItem(
+                value: _OverflowAction.logs,
+                child: _OverflowItem(
+                  hasErrors ? Icons.error_outline_rounded : Icons.receipt_long_outlined,
+                  context.l10n.logs,
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              PopupMenuItem(
+                value: _OverflowAction.settings,
+                child: _OverflowItem(Icons.tune_rounded, context.l10n.settings),
+              ),
+            ],
+          ),
+        ],
+      ),
+      drawer: const _WorkflowDrawer(),
+      body: const _CompactBody(),
+    );
+  }
+
+  void _handleOverflow(BuildContext context, _OverflowAction action) {
+    final state = workbenchSignals;
+    switch (action) {
+      case _OverflowAction.undo:
+        workbenchHistory.undo();
+      case _OverflowAction.redo:
+        workbenchHistory.redo();
+      case _OverflowAction.save:
+        final id = workflowManager.save();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(context.l10n.savedWorkflowSnack(state.activeWorkflowName.value)),
+          duration: const Duration(seconds: 2),
+        ));
+        logSignals.add(LogLevel.info, 'Workflow saved: $id', scope: 'workbench');
+      case _OverflowAction.logs:
+        _showLogs(context);
+      case _OverflowAction.settings:
+        _showSettings(context);
+    }
+  }
+
+  // ---- Wide scaffold (desktop / landscape tablet) --------------------------
+
+  Widget _buildWide(BuildContext context) {
+    final state = workbenchSignals;
+    final running = state.runState.value == WorkbenchRunState.running;
+    final canUndo = workbenchHistory.canUndo.value;
+    final canRedo = workbenchHistory.canRedo.value;
+    final hasErrors = logSignals.hasErrors.value;
+    final workflowName = state.activeWorkflowName.value;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: _AppTitle(workflowName: workflowName),
         actions: [
           IconButton(
             tooltip: context.l10n.importWorkflow,
@@ -190,44 +261,32 @@ class WorkbenchScreen extends SignalWidget {
           ),
           IconButton(
             tooltip: context.l10n.undo,
-            onPressed: workbenchHistory.canUndo.value
-                ? workbenchHistory.undo
-                : null,
+            onPressed: canUndo ? workbenchHistory.undo : null,
             icon: const Icon(Icons.undo_rounded),
           ),
           IconButton(
             tooltip: context.l10n.redo,
-            onPressed: workbenchHistory.canRedo.value
-                ? workbenchHistory.redo
-                : null,
+            onPressed: canRedo ? workbenchHistory.redo : null,
             icon: const Icon(Icons.redo_rounded),
           ),
           IconButton(
             tooltip: context.l10n.saveWorkflow,
             onPressed: () {
               final id = workflowManager.save();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(context.l10n.savedWorkflowSnack(state.activeWorkflowName.value)),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-              logSignals.add(
-                LogLevel.info,
-                'Workflow saved: $id',
-                scope: 'workbench',
-              );
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(context.l10n.savedWorkflowSnack(state.activeWorkflowName.value)),
+                duration: const Duration(seconds: 2),
+              ));
+              logSignals.add(LogLevel.info, 'Workflow saved: $id', scope: 'workbench');
             },
             icon: const Icon(Icons.save_outlined),
           ),
           IconButton(
             tooltip: context.l10n.logs,
             onPressed: () => _showLogs(context),
-            icon: Icon(
-              logSignals.hasErrors.value
-                  ? Icons.error_outline_rounded
-                  : Icons.receipt_long_outlined,
-            ),
+            icon: Icon(hasErrors
+                ? Icons.error_outline_rounded
+                : Icons.receipt_long_outlined),
           ),
           IconButton(
             tooltip: context.l10n.settings,
@@ -237,42 +296,21 @@ class WorkbenchScreen extends SignalWidget {
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
-              onPressed: () {
-                if (state.runState.value == WorkbenchRunState.running) {
-                  _controller.stop();
-                } else {
-                  _controller.run();
-                }
-              },
-              icon: Icon(
-                state.runState.value == WorkbenchRunState.running
-                    ? Icons.stop_rounded
-                    : Icons.play_arrow_rounded,
-              ),
-              label: Text(
-                state.runState.value == WorkbenchRunState.running
-                    ? context.l10n.stop
-                    : context.l10n.run,
-              ),
+              onPressed: running ? _controller.stop : _controller.run,
+              icon: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded),
+              label: Text(running ? context.l10n.stop : context.l10n.run),
             ),
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 860) {
-            return const _CompactWorkbench();
-          }
-          return const Row(
-            children: [
-              SizedBox(width: 280, child: _WorkflowRail()),
-              VerticalDivider(),
-              Expanded(child: _CanvasStage()),
-              VerticalDivider(),
-              SizedBox(width: 320, child: _InspectorRail()),
-            ],
-          );
-        },
+      body: const Row(
+        children: [
+          SizedBox(width: 280, child: _WorkflowRail()),
+          VerticalDivider(),
+          Expanded(child: _CanvasStage()),
+          VerticalDivider(),
+          SizedBox(width: 320, child: _InspectorRail()),
+        ],
       ),
     );
   }
@@ -509,17 +547,427 @@ Future<String?> _promptForName(
   );
 }
 
-class _CompactWorkbench extends StatelessWidget {
-  const _CompactWorkbench();
+// ---------------------------------------------------------------------------
+// Shared AppBar title widget (logo LED + wordmark + workflow name)
+// ---------------------------------------------------------------------------
+
+class _AppTitle extends StatelessWidget {
+  const _AppTitle({required this.workflowName});
+  final String workflowName;
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(height: 180, child: _WorkflowRail()),
-        Divider(),
-        Expanded(child: _CanvasStage()),
+        Container(
+          width: 9,
+          height: 9,
+          margin: const EdgeInsets.only(right: 10, top: 2),
+          decoration: BoxDecoration(
+            color: CainTokens.phosphor,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: CainTokens.phosphor.withValues(alpha: 0.7),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+        ),
+        Flexible(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('CAINFLOW'),
+              Text(
+                workflowName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: CainTokens.mono(10.5, color: CainTokens.inkFaint),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Overflow menu enum + item helper (compact AppBar)
+// ---------------------------------------------------------------------------
+
+enum _OverflowAction { undo, redo, save, logs, settings }
+
+class _OverflowItem extends StatelessWidget {
+  const _OverflowItem(this.icon, this.label);
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: CainTokens.inkDim),
+        const SizedBox(width: 12),
+        Text(label),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Compact body: full-screen canvas + sliding mini-inspector
+// ---------------------------------------------------------------------------
+
+class _CompactBody extends SignalWidget {
+  const _CompactBody();
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = workbenchSignals.selectedNode.value;
+    return Stack(
+      children: [
+        const Positioned.fill(child: _CanvasStage()),
+        // Mini-inspector slides up from the bottom when a node is selected.
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          left: 0,
+          right: 0,
+          bottom: selected != null ? 0 : -200,
+          child: const _MiniInspector(),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mini-inspector: compact bottom panel for the selected node
+// ---------------------------------------------------------------------------
+
+class _MiniInspector extends SignalWidget {
+  const _MiniInspector();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = workbenchSignals;
+    final selected = state.selectedNode.value;
+    if (selected == null) return const SizedBox.shrink();
+
+    final snap = executionSignals.nodeStates.value[selected.id];
+    final now = executionSignals.nowTick.value;
+    final badge = _miniNodeBadge(selected.type);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: CainTokens.panel,
+        border: Border(top: BorderSide(color: CainTokens.panelEdge)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+          child: Row(
+            children: [
+              // Type badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: badge.color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(3),
+                  border: Border.all(color: badge.color.withValues(alpha: 0.5)),
+                ),
+                child: Text(
+                  badge.code,
+                  style: CainTokens.mono(9, weight: FontWeight.w700, color: badge.color),
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Node title + status
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      selected.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: CainTokens.display(13, weight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    _MiniStatusLine(snapshot: snap, now: now),
+                  ],
+                ),
+              ),
+              // Actions
+              IconButton(
+                tooltip: context.l10n.editTooltip,
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                color: CainTokens.inkDim,
+                onPressed: () => _openNodeEditor(context, selected.id),
+              ),
+              IconButton(
+                tooltip: context.l10n.deleteTooltip,
+                icon: const Icon(Icons.delete_outline, size: 20),
+                color: CainTokens.danger.withValues(alpha: 0.8),
+                onPressed: () {
+                  workbenchSignals.removeNode(selected.id);
+                  workbenchSignals.clearSelection();
+                },
+              ),
+              IconButton(
+                tooltip: context.l10n.clearSelection,
+                icon: const Icon(Icons.close_rounded, size: 20),
+                color: CainTokens.inkFaint,
+                onPressed: state.clearSelection,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Inline badge data for the mini-inspector (mirrors node_card.dart logic).
+({Color color, String code}) _miniNodeBadge(String type) {
+  if (type.startsWith('Control')) return (color: CainTokens.signalControl, code: _miniCode(type));
+  if (type.startsWith('Image') || type == 'CameraControl') return (color: CainTokens.signalImage, code: _miniCode(type));
+  return (color: CainTokens.signalText, code: _miniCode(type));
+}
+
+String _miniCode(String type) {
+  final caps = type.replaceAll(RegExp('[^A-Z]'), '');
+  if (caps.length >= 2) return caps.substring(0, caps.length.clamp(0, 3));
+  return type.substring(0, type.length.clamp(0, 3)).toUpperCase();
+}
+
+class _MiniStatusLine extends StatelessWidget {
+  const _MiniStatusLine({required this.snapshot, required this.now});
+  final NodeRunSnapshot? snapshot;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final snap = snapshot;
+    if (snap == null) {
+      return Text(
+        context.l10n.statePending,
+        style: CainTokens.mono(10, color: CainTokens.inkFaint),
+      );
+    }
+    final label = _nodeStateLabel(snap.state, context.l10n);
+    final color = switch (snap.state) {
+      NodeRunState.failed => CainTokens.danger,
+      NodeRunState.completed => CainTokens.ok,
+      NodeRunState.running => CainTokens.phosphor,
+      NodeRunState.skipped => CainTokens.idle,
+      _ => CainTokens.inkFaint,
+    };
+    final duration = snap.durationAt(now);
+    final suffix = duration == null
+        ? ''
+        : snap.state == NodeRunState.running
+            ? '  ${(duration.inMilliseconds / 1000).toStringAsFixed(1)}s'
+            : '  ${(duration.inMilliseconds / 1000).toStringAsFixed(2)}s';
+    return Row(
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '$label$suffix',
+          style: CainTokens.mono(10, color: color),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Workflow drawer (compact mode)
+// ---------------------------------------------------------------------------
+
+class _WorkflowDrawer extends SignalWidget {
+  const _WorkflowDrawer();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final manager = workflowManager;
+    final state = workbenchSignals;
+
+    final activeId = manager.activeWorkflowId.value;
+    final workflows = manager.workflows.value;
+    final activeName = state.activeWorkflowName.value;
+    final graphSummary = state.graphSummary.value;
+
+    return Drawer(
+      backgroundColor: CainTokens.panel,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+              decoration: BoxDecoration(
+                color: CainTokens.panelHigh,
+                border: Border(bottom: BorderSide(color: CainTokens.panelEdge)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: CainTokens.phosphor,
+                          shape: BoxShape.circle,
+                          boxShadow: [BoxShadow(color: CainTokens.phosphor.withValues(alpha: 0.6), blurRadius: 6)],
+                        ),
+                      ),
+                      Text('CAINFLOW', style: CainTokens.display(14, weight: FontWeight.w700, color: CainTokens.phosphor)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    activeName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: CainTokens.mono(11, color: CainTokens.inkFaint),
+                  ),
+                ],
+              ),
+            ),
+            // Quick actions
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _showNodePicker(context);
+                      },
+                      icon: const Icon(Icons.add_rounded, size: 16),
+                      label: Text(context.l10n.addNode),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: CainTokens.signalText,
+                        side: BorderSide(color: CainTokens.signalText.withValues(alpha: 0.4)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _createWorkflow(context);
+                      },
+                      icon: const Icon(Icons.note_add_outlined, size: 16),
+                      label: Text(context.l10n.newWorkflow),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Workflows section header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+              child: Text(
+                context.l10n.workflows,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: CainTokens.inkFaint,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+            // Workflow list
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  _WorkflowTile(
+                    title: activeName,
+                    subtitle: graphSummary,
+                    selected: true,
+                    onLongPress: activeId == null
+                        ? null
+                        : () => _workflowActions(context, activeId),
+                  ),
+                  for (final wf in workflows)
+                    if (wf.id != activeId) ...[
+                      const SizedBox(height: 6),
+                      _WorkflowTile(
+                        title: wf.name,
+                        subtitle: wf.id,
+                        selected: false,
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          manager.switchTo(wf.id);
+                        },
+                        onLongPress: () => _workflowActions(context, wf.id),
+                      ),
+                    ],
+                  // Hint text
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      context.l10n.workflowHint,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: CainTokens.inkFaint,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // Bottom links
+            ListTile(
+              dense: true,
+              leading: Icon(Icons.receipt_long_outlined, size: 20, color: CainTokens.inkDim),
+              title: Text(context.l10n.logs,
+                  style: CainTokens.mono(12, color: CainTokens.inkDim)),
+              onTap: () {
+                Navigator.of(context).pop();
+                _showLogs(context);
+              },
+            ),
+            ListTile(
+              dense: true,
+              leading: Icon(Icons.tune_rounded, size: 20, color: CainTokens.inkDim),
+              title: Text(context.l10n.settings,
+                  style: CainTokens.mono(12, color: CainTokens.inkDim)),
+              onTap: () {
+                Navigator.of(context).pop();
+                _showSettings(context);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 }

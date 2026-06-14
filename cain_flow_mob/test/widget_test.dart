@@ -7,6 +7,12 @@ import 'package:cain_flow_mob/features/workbench/workbench_screen.dart';
 
 void main() {
   testWidgets('renders CainFlow workbench shell', (tester) async {
+    // Use a wide viewport so the full 3-panel layout (with WorkflowRail) renders.
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(const CainFlowApp());
     // GlobalMaterialLocalizations.delegate loads asynchronously; settle it.
     await tester.pumpAndSettle();

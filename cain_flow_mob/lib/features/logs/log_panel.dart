@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:signals/signals_flutter.dart';
 
+import '../../l10n/app_localizations.dart';
 import 'log_signals.dart';
 
 class LogPanel extends SignalWidget {
@@ -23,10 +24,10 @@ class LogPanel extends SignalWidget {
               padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
               child: Row(
                 children: [
-                  Text('Logs', style: theme.textTheme.titleMedium),
+                  Text(context.l10n.logs, style: theme.textTheme.titleMedium),
                   const Spacer(),
                   IconButton(
-                    tooltip: 'Clear logs',
+                    tooltip: context.l10n.clearLogs,
                     onPressed: state.clear,
                     icon: const Icon(Icons.delete_sweep_outlined),
                   ),
@@ -38,7 +39,7 @@ class LogPanel extends SignalWidget {
               Expanded(
                 child: Center(
                   child: Text(
-                    'No logs yet',
+                    context.l10n.noLogsYet,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
