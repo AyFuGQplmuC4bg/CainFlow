@@ -74,6 +74,12 @@ class _SpyFeedback implements CompletionFeedback {
   int failureCount = 0;
 
   @override
+  bool get soundEnabled => true;
+
+  @override
+  bool get hapticsEnabled => true;
+
+  @override
   Future<void> success() async => successCount++;
 
   @override

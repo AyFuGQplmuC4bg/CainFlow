@@ -103,6 +103,8 @@ class RuntimeSettings {
     this.asyncPollIntervalSeconds = 2,
     this.asyncTimeoutSeconds = 300,
     this.maxConcurrency = 1,
+    this.completionSoundEnabled = true,
+    this.completionHapticsEnabled = true,
   });
 
   factory RuntimeSettings.defaults() => const RuntimeSettings();
@@ -116,6 +118,9 @@ class RuntimeSettings {
       asyncPollIntervalSeconds: _intFrom(json['asyncPollIntervalSeconds'], 2),
       asyncTimeoutSeconds: _intFrom(json['asyncTimeoutSeconds'], 300),
       maxConcurrency: _intFrom(json['maxConcurrency'], 1),
+      completionSoundEnabled: _boolFrom(json['completionSoundEnabled'], true),
+      completionHapticsEnabled:
+          _boolFrom(json['completionHapticsEnabled'], true),
     );
   }
 
@@ -127,6 +132,12 @@ class RuntimeSettings {
   final int asyncTimeoutSeconds;
   final int maxConcurrency;
 
+  /// Play a sound when a workflow run finishes.
+  final bool completionSoundEnabled;
+
+  /// Vibrate (haptic feedback) when a workflow run finishes.
+  final bool completionHapticsEnabled;
+
   RuntimeSettings copyWith({
     int? requestTimeoutSeconds,
     int? retryCount,
@@ -135,6 +146,8 @@ class RuntimeSettings {
     int? asyncPollIntervalSeconds,
     int? asyncTimeoutSeconds,
     int? maxConcurrency,
+    bool? completionSoundEnabled,
+    bool? completionHapticsEnabled,
   }) {
     return RuntimeSettings(
       requestTimeoutSeconds:
@@ -146,6 +159,10 @@ class RuntimeSettings {
           asyncPollIntervalSeconds ?? this.asyncPollIntervalSeconds,
       asyncTimeoutSeconds: asyncTimeoutSeconds ?? this.asyncTimeoutSeconds,
       maxConcurrency: maxConcurrency ?? this.maxConcurrency,
+      completionSoundEnabled:
+          completionSoundEnabled ?? this.completionSoundEnabled,
+      completionHapticsEnabled:
+          completionHapticsEnabled ?? this.completionHapticsEnabled,
     );
   }
 
@@ -158,6 +175,8 @@ class RuntimeSettings {
       'asyncPollIntervalSeconds': asyncPollIntervalSeconds,
       'asyncTimeoutSeconds': asyncTimeoutSeconds,
       'maxConcurrency': maxConcurrency,
+      'completionSoundEnabled': completionSoundEnabled,
+      'completionHapticsEnabled': completionHapticsEnabled,
     };
   }
 }
@@ -253,6 +272,16 @@ int _intFrom(Object? value, int fallback) {
   if (value is int) return value;
   if (value is num) return value.toInt();
   if (value is String) return int.tryParse(value.trim()) ?? fallback;
+  return fallback;
+}
+
+bool _boolFrom(Object? value, bool fallback) {
+  if (value is bool) return value;
+  if (value is String) {
+    final v = value.trim().toLowerCase();
+    if (v == 'true') return true;
+    if (v == 'false') return false;
+  }
   return fallback;
 }
 

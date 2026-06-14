@@ -271,6 +271,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          key: const Key('runtime-completion-sound-switch'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(context.l10n.completionSoundLabel),
+          value: runtime.completionSoundEnabled,
+          onChanged: (value) => _persist(
+            _settings.copyWith(
+              runtime: runtime.copyWith(completionSoundEnabled: value),
+            ),
+          ),
+        ),
+        SwitchListTile(
+          key: const Key('runtime-completion-haptics-switch'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(context.l10n.completionHapticsLabel),
+          value: runtime.completionHapticsEnabled,
+          onChanged: (value) => _persist(
+            _settings.copyWith(
+              runtime: runtime.copyWith(completionHapticsEnabled: value),
+            ),
+          ),
+        ),
       ],
     );
   }

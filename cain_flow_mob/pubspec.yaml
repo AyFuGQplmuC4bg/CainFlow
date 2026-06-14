@@ -47,6 +47,7 @@ dependencies:
   google_fonts: ^6.2.1
   file_picker: ^9.0.0
   vector_math: ^2.2.0
+  audioplayers: ^6.7.1
 
 dev_dependencies:
   flutter_test:
@@ -69,6 +70,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/sounds/completion.mp3
 
   # To add assets to your application, add an assets section, like this:
   # assets:

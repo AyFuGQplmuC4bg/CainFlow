@@ -27,6 +27,7 @@ import '../../core/storage/in_memory_local_kv_store.dart';
 import '../../core/storage/local_kv_store.dart';
 import '../../core/storage/mmkv_local_kv_store.dart';
 import 'workbench_autosave.dart';
+import 'completion_feedback.dart';
 import 'workbench_execution_controller.dart';
 import 'workbench_history.dart';
 import 'workbench_signals.dart';
@@ -62,6 +63,10 @@ WorkbenchExecutionController _buildDefaultController() {
     logs: logSignals,
     maxConcurrency: runtime.maxConcurrency,
     historyRepository: HistoryRepository(store: store),
+    feedback: CompletionFeedback(
+      soundEnabled: runtime.completionSoundEnabled,
+      hapticsEnabled: runtime.completionHapticsEnabled,
+    ),
   );
 }
 

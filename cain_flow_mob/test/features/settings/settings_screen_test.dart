@@ -55,6 +55,8 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(find.text('Export graph'));
+    await tester.pump();
     await tester.tap(find.text('Export graph'));
     await tester.pump();
 

@@ -19,9 +19,10 @@ class WorkbenchExecutionController {
     LogSignals? logs,
     this.maxConcurrency = 1,
     this.historyRepository,
-    this.feedback = const CompletionFeedback(),
+    CompletionFeedback? feedback,
   }) : executionSignals = executionSignals ?? ExecutionSignals(),
-       logs = logs ?? logSignals;
+       logs = logs ?? logSignals,
+       feedback = feedback ?? CompletionFeedback();
 
   final WorkbenchSignals workbench;
   final NodeExecutor executor;

@@ -93,6 +93,8 @@ abstract class AppLocalizations {
   String get retryCountLabel;
   String get asyncPollLabel;
   String get asyncTimeoutLabel;
+  String get completionSoundLabel;
+  String get completionHapticsLabel;
   String get activeChatModel;
   String get activeImageModel;
   String get noneOption;
@@ -134,6 +136,11 @@ abstract class AppLocalizations {
   String get mustBeJsonObject;
   String get invalidJson;
   String get jsonSuffix;
+
+  // --- Folder picker ---
+  String get browseFolder;
+  String get noFolderSelected;
+  String imageSavedTo(String path);
 
   // --- Log panel ---
   String get clearLogs;
@@ -205,6 +212,8 @@ class AppLocalizationsEn extends AppLocalizations {
   @override String get retryCountLabel => 'Retry count';
   @override String get asyncPollLabel => 'Async poll (seconds)';
   @override String get asyncTimeoutLabel => 'Async timeout (seconds)';
+  @override String get completionSoundLabel => 'Completion sound';
+  @override String get completionHapticsLabel => 'Vibrate on completion';
   @override String get activeChatModel => 'Active chat model';
   @override String get activeImageModel => 'Active image model';
   @override String get noneOption => 'None';
@@ -248,6 +257,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override String get clearLogs => 'Clear logs';
   @override String get noLogsYet => 'No logs yet';
   @override String get moreActions => 'More';
+  @override String get browseFolder => 'Browse';
+  @override String get noFolderSelected => 'No folder selected';
+  @override String imageSavedTo(String path) => 'Image copied to $path';
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +324,8 @@ class AppLocalizationsZh extends AppLocalizations {
   @override String get retryCountLabel => '重试次数';
   @override String get asyncPollLabel => '异步轮询 (秒)';
   @override String get asyncTimeoutLabel => '异步超时 (秒)';
+  @override String get completionSoundLabel => '完成提示音';
+  @override String get completionHapticsLabel => '完成时震动';
   @override String get activeChatModel => '当前对话模型';
   @override String get activeImageModel => '当前图像模型';
   @override String get noneOption => '无';
@@ -355,6 +369,9 @@ class AppLocalizationsZh extends AppLocalizations {
   @override String get clearLogs => '清除日志';
   @override String get noLogsYet => '暂无日志';
   @override String get moreActions => '更多';
+  @override String get browseFolder => '浏览';
+  @override String get noFolderSelected => '未选择文件夹';
+  @override String imageSavedTo(String path) => '图片已复制到 $path';
 }
 
 // ---------------------------------------------------------------------------
