@@ -44,6 +44,17 @@ class NodeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    // Card grows for nodes with more than two stacked ports, plus an optional
+    // thumbnail. Two-port nodes keep the base height.
+    final portRows = [
+      definition?.inputPorts.length ?? 0,
+      definition?.outputPorts.length ?? 0,
+    ].reduce((a, b) => a > b ? a : b);
+    final extraPortRows = (portRows - 2).clamp(0, 6);
+    final cardHeight = workbenchNodeSize.height +
+        extraPortRows * 26.0 +
+        (imagePayload != null ? 56 : 0);
+
     return GestureDetector(
       onTap: () {
         onSelect();
@@ -56,7 +67,7 @@ class NodeCard extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         width: workbenchNodeSize.width,
-        height: workbenchNodeSize.height + (imagePayload != null ? 56 : 0),
+        height: cardHeight,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,

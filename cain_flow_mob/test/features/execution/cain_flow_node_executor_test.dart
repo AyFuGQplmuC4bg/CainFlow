@@ -9,6 +9,7 @@ import 'package:cain_flow_mob/features/execution/execution_services.dart';
 import 'package:cain_flow_mob/features/execution/node_executor.dart';
 import 'package:cain_flow_mob/features/execution/provider_request_builder.dart';
 import 'package:cain_flow_mob/features/logs/log_signals.dart';
+import 'package:cain_flow_mob/features/media/media_downloader.dart';
 import 'package:cain_flow_mob/features/media/media_repository.dart';
 import 'package:cain_flow_mob/features/settings/provider_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -198,6 +199,36 @@ void main() {
       expect(messages.first, {'role': 'system', 'content': 'be terse'});
       expect(body['temperature'], 0.7);
       expect(body['stream'], false);
+    });
+
+    test('injects a url reference image as a multimodal content part',
+        () async {
+      final harness = ExecutorHarness(
+        settings: chatSettings(),
+        responses: const [
+          FakeResponse(200, '{"choices":[{"message":{"content":"ok"}}]}'),
+        ],
+      );
+      final node = const FlowNode(id: 'c', type: 'TextChat', x: 0, y: 0);
+
+      await harness.executor.execute(
+        node,
+        _context(inputs: {
+          'prompt': 'describe',
+          'image_1': {'kind': 'url', 'url': 'https://cdn/x.png'},
+        }),
+      );
+
+      final messages = harness.client.requests.single.body['messages'] as List;
+      final userContent = (messages.last as Map)['content'] as List;
+      expect(userContent.first, {'type': 'text', 'text': 'describe'});
+      expect(
+        userContent.any((p) =>
+            p is Map &&
+            p['type'] == 'image_url' &&
+            (p['image_url'] as Map)['url'] == 'https://cdn/x.png'),
+        isTrue,
+      );
     });
   });
 
@@ -486,7 +517,58 @@ void main() {
       expect(image['kind'], 'asset');
       expect(harness.mediaRepository.loadAll().single.id, image['assetId']);
     });
+
+    test('downloads a remote URL to a local asset when opted in', () async {
+      final harness = ExecutorHarness(
+        downloader: _FakeDownloader(),
+      );
+      final node = const FlowNode(
+        id: 'save',
+        type: 'ImageSave',
+        x: 0,
+        y: 0,
+        data: {'downloadRemote': 'true'},
+      );
+
+      final result = await harness.executor.execute(
+        node,
+        _context(inputs: {
+          'image': {'kind': 'url', 'url': 'https://cdn/remote.png'},
+        }),
+      );
+
+      final image = result.outputs['image'] as Map;
+      expect(image['kind'], 'asset');
+      expect(harness.mediaRepository.loadAll().single.id, image['assetId']);
+    });
+
+    test('keeps URL metadata when download is not requested', () async {
+      final harness = ExecutorHarness(downloader: _FakeDownloader());
+      final node = const FlowNode(id: 'save', type: 'ImageSave', x: 0, y: 0);
+
+      final result = await harness.executor.execute(
+        node,
+        _context(inputs: {
+          'image': {'kind': 'url', 'url': 'https://cdn/remote.png'},
+        }),
+      );
+
+      expect((result.outputs['image'] as Map)['kind'], 'url');
+    });
   });
+}
+
+class _FakeDownloader implements MediaDownloader {
+  @override
+  Future<DownloadedMedia> download(
+    String url, {
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    return DownloadedMedia(
+      bytes: base64Decode(_tinyPngBase64),
+      mimeType: 'image/png',
+    );
+  }
 }
 
 /// 1x1 transparent PNG.
@@ -498,6 +580,7 @@ class ExecutorHarness {
   ExecutorHarness({
     ProviderSettings? settings,
     List<FakeResponse> responses = const [],
+    MediaDownloader? downloader,
   }) : client = FakeProviderClient(responses) {
     store = MemoryLocalKvStore();
     settingsRepository = ProviderSettingsRepository(store: store);
@@ -511,6 +594,7 @@ class ExecutorHarness {
       mediaRepository: mediaRepository,
       logs: logs,
       workflowId: 'wf-test',
+      downloaderOverride: downloader,
     );
     executor = CainFlowNodeExecutor(services: services);
   }

@@ -29,6 +29,7 @@ abstract final class ProviderRequestBuilder {
     required String prompt,
     String systemPrompt = '',
     Map<String, dynamic> customParams = const {},
+    List<String> referenceImages = const [],
   }) {
     return switch (model.protocol) {
       ModelProtocol.google => _buildGoogleChatRequest(
@@ -37,6 +38,7 @@ abstract final class ProviderRequestBuilder {
         prompt: prompt,
         systemPrompt: systemPrompt,
         customParams: customParams,
+        referenceImages: referenceImages,
       ),
       // Async-image providers have no chat path; use the OpenAI-compatible shape.
       ModelProtocol.openai || ModelProtocol.newApiImageAsync =>
@@ -46,6 +48,7 @@ abstract final class ProviderRequestBuilder {
           prompt: prompt,
           systemPrompt: systemPrompt,
           customParams: customParams,
+          referenceImages: referenceImages,
         ),
     };
   }
@@ -57,6 +60,7 @@ abstract final class ProviderRequestBuilder {
     String size = '',
     String quality = '',
     Map<String, dynamic> customParams = const {},
+    List<String> referenceImages = const [],
   }) {
     return switch (model.protocol) {
       ModelProtocol.google => _buildGoogleImageRequest(
@@ -64,6 +68,7 @@ abstract final class ProviderRequestBuilder {
         model: model,
         prompt: prompt,
         customParams: customParams,
+        referenceImages: referenceImages,
       ),
       ModelProtocol.openai || ModelProtocol.newApiImageAsync =>
         _buildOpenAiImageRequest(
@@ -73,6 +78,7 @@ abstract final class ProviderRequestBuilder {
           size: size,
           quality: quality,
           customParams: customParams,
+          referenceImages: referenceImages,
         ),
     };
   }
@@ -84,11 +90,24 @@ ProviderRequest _buildOpenAiChatRequest({
   required String prompt,
   required String systemPrompt,
   required Map<String, dynamic> customParams,
+  List<String> referenceImages = const [],
 }) {
+  // With reference images, OpenAI expects a content array of text + image_url
+  // parts; otherwise a plain string content keeps requests simple.
+  final Object userContent = referenceImages.isEmpty
+      ? prompt
+      : <Map<String, dynamic>>[
+          {'type': 'text', 'text': prompt},
+          for (final image in referenceImages)
+            {
+              'type': 'image_url',
+              'image_url': {'url': image},
+            },
+        ];
   final messages = <Map<String, dynamic>>[
     if (systemPrompt.trim().isNotEmpty)
       {'role': 'system', 'content': systemPrompt.trim()},
-    {'role': 'user', 'content': prompt},
+    {'role': 'user', 'content': userContent},
   ];
   return ProviderRequest(
     url: _resolveOpenAiUrl(provider, '/chat/completions'),
@@ -105,11 +124,13 @@ ProviderRequest _buildOpenAiImageRequest({
   required String size,
   required String quality,
   required Map<String, dynamic> customParams,
+  List<String> referenceImages = const [],
 }) {
   final body = <String, dynamic>{
     'model': model.modelId,
     'prompt': prompt,
     'n': 1,
+    if (referenceImages.isNotEmpty) 'image_urls': referenceImages,
     ...customParams,
   };
   if (_isOpenAiImageSize(size)) body['size'] = size;
@@ -129,12 +150,14 @@ ProviderRequest _buildGoogleChatRequest({
   required String prompt,
   required String systemPrompt,
   required Map<String, dynamic> customParams,
+  List<String> referenceImages = const [],
 }) {
   final body = <String, dynamic>{
     'contents': [
       {
         'parts': [
           {'text': prompt},
+          ..._googleImageParts(referenceImages),
         ],
       },
     ],
@@ -161,6 +184,7 @@ ProviderRequest _buildGoogleImageRequest({
   required ModelConfig model,
   required String prompt,
   required Map<String, dynamic> customParams,
+  List<String> referenceImages = const [],
 }) {
   return ProviderRequest(
     url: _resolveGoogleUrl(provider, model),
@@ -171,6 +195,7 @@ ProviderRequest _buildGoogleImageRequest({
         {
           'parts': [
             {'text': prompt},
+            ..._googleImageParts(referenceImages),
           ],
         },
       ],
@@ -180,6 +205,25 @@ ProviderRequest _buildGoogleImageRequest({
       ...customParams,
     },
   );
+}
+
+/// Converts reference images (data URIs or base64) into Gemini inlineData
+/// parts. Plain `http(s)` URLs are skipped (Gemini needs inline bytes).
+List<Map<String, dynamic>> _googleImageParts(List<String> referenceImages) {
+  final parts = <Map<String, dynamic>>[];
+  for (final image in referenceImages) {
+    final match = RegExp(r'^data:([^;]+);base64,(.*)$').firstMatch(image.trim());
+    if (match != null) {
+      parts.add({
+        'inlineData': {'mimeType': match.group(1), 'data': match.group(2)},
+      });
+    } else if (!image.startsWith('http')) {
+      parts.add({
+        'inlineData': {'mimeType': 'image/png', 'data': image},
+      });
+    }
+  }
+  return parts;
 }
 
 Map<String, String> _openAiHeaders(ProviderConfig provider) {

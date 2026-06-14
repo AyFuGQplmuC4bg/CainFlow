@@ -38,6 +38,8 @@ const nodeRegistry = NodeRegistry([
     description: 'Chat completion request.',
     inputPorts: [
       NodePortDefinition(name: 'prompt', type: 'text', label: 'Prompt'),
+      NodePortDefinition(name: 'image_1', type: 'image', label: 'Vision 1'),
+      NodePortDefinition(name: 'image_2', type: 'image', label: 'Vision 2'),
     ],
     outputPorts: [
       NodePortDefinition(name: 'text', type: 'text', label: 'Text'),
@@ -83,7 +85,9 @@ const nodeRegistry = NodeRegistry([
     description: 'Generate images from text and optional references.',
     inputPorts: [
       NodePortDefinition(name: 'prompt', type: 'text', label: 'Prompt'),
-      NodePortDefinition(name: 'image', type: 'image', label: 'Reference'),
+      NodePortDefinition(name: 'image_1', type: 'image', label: 'Ref 1'),
+      NodePortDefinition(name: 'image_2', type: 'image', label: 'Ref 2'),
+      NodePortDefinition(name: 'mask', type: 'image', label: 'Mask'),
     ],
     outputPorts: [
       NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
@@ -130,6 +134,15 @@ const nodeRegistry = NodeRegistry([
     description: 'Persist generated images to local storage.',
     inputPorts: [
       NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
+    ],
+    params: [
+      NodeParamDefinition(
+        name: 'downloadRemote',
+        label: 'Download remote URLs',
+        control: NodeParamControl.select,
+        options: ['false', 'true'],
+        defaultValue: 'false',
+      ),
     ],
   ),
   NodeDefinition(

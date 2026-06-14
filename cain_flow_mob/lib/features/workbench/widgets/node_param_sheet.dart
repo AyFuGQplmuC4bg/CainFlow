@@ -182,7 +182,12 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
 
   Widget _select(NodeParamDefinition param) {
     final current = _data[param.name]?.toString() ?? '';
-    final value = param.options.contains(current) ? current : '';
+    // Fall back to the declared default (or first option) when the stored
+    // value isn't among the options, so the dropdown always has a valid value.
+    final fallback = param.options.contains(param.defaultValue?.toString())
+        ? param.defaultValue.toString()
+        : (param.options.isNotEmpty ? param.options.first : '');
+    final value = param.options.contains(current) ? current : fallback;
     return DropdownButtonFormField<String>(
       key: ValueKey('param_${param.name}'),
       initialValue: value,

@@ -222,6 +222,45 @@ class CainFlowNodeExecutor implements NodeExecutor {
     return _assetPayload(asset);
   }
 
+  /// Collects image inputs into provider-ready reference strings: local assets
+  /// become `data:` URIs (base64); remote URLs pass through unchanged. Scans
+  /// any input port whose name suggests an image (`image*`, `mask`).
+  Future<List<String>> _collectReferenceImages(
+    Map<String, dynamic> inputs,
+  ) async {
+    final keys = inputs.keys
+        .where((k) => k.startsWith('image') || k == 'mask')
+        .toList()
+      ..sort();
+    final refs = <String>[];
+    for (final key in keys) {
+      final ref = await _imageInputToReference(inputs[key]);
+      if (ref != null) refs.add(ref);
+    }
+    return refs;
+  }
+
+  Future<String?> _imageInputToReference(Object? input) async {
+    if (input is Map) {
+      final map = Map<String, dynamic>.from(input);
+      final kind = _stringFrom(map['kind']);
+      if (kind == 'url') {
+        final url = _stringFrom(map['url']);
+        return (url != null && url.isNotEmpty) ? url : null;
+      }
+      if (kind == 'asset') {
+        final bytes = await _loadImageBytes(map);
+        return 'data:${_stringFrom(map['mimeType']) ?? 'image/png'};base64,'
+            '${base64Encode(bytes)}';
+      }
+      final b64 = _stringFrom(map['b64_json']) ?? _stringFrom(map['base64']);
+      if (b64 != null && b64.isNotEmpty) {
+        return 'data:image/png;base64,${_stripDataUri(b64)}';
+      }
+    }
+    return null;
+  }
+
   Future<NodeExecutionResult> _executeTextChat(
     FlowNode node,
     NodeExecutionContext context,
@@ -241,6 +280,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       prompt: prompt,
       systemPrompt: _stringFrom(node.data['systemPrompt']) ?? '',
       customParams: _customParamsFrom(node.data['customParams']),
+      referenceImages: await _collectReferenceImages(context.inputs),
     );
 
     final response = await _send(node: node, request: request, scope: 'TextChat');
@@ -279,6 +319,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       size: _stringFrom(node.data['size']) ?? '',
       quality: _stringFrom(node.data['quality']) ?? '',
       customParams: _customParamsFrom(node.data['customParams']),
+      referenceImages: await _collectReferenceImages(context.inputs),
     );
 
     final response =
@@ -390,7 +431,12 @@ class CainFlowNodeExecutor implements NodeExecutor {
     NodeExecutionContext context,
   ) async {
     final input = context.inputs['image'];
-    final payload = await _persistImagePayload(input, fileNameSeed: node.id);
+    final downloadRemote = _stringFrom(node.data['downloadRemote']) == 'true';
+    final payload = await _persistImagePayload(
+      input,
+      fileNameSeed: node.id,
+      downloadRemote: downloadRemote,
+    );
     return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
   }
 
@@ -535,12 +581,19 @@ class CainFlowNodeExecutor implements NodeExecutor {
   Future<Map<String, dynamic>> _persistImagePayload(
     Object? input, {
     required String fileNameSeed,
+    bool downloadRemote = false,
   }) async {
     if (input is Map) {
       final map = Map<String, dynamic>.from(input);
       final kind = _stringFrom(map['kind']);
       if (kind == 'asset') return map;
-      if (kind == 'url') return map;
+      if (kind == 'url') {
+        final url = _stringFrom(map['url']) ?? '';
+        if (downloadRemote && url.isNotEmpty) {
+          return _downloadUrl(url, fileNameSeed: fileNameSeed);
+        }
+        return map;
+      }
       final b64 = _stringFrom(map['b64_json']) ?? _stringFrom(map['base64']);
       if (b64 != null && b64.isNotEmpty) {
         return _saveBase64(
@@ -555,6 +608,22 @@ class CainFlowNodeExecutor implements NodeExecutor {
       return _saveBase64(input, fileNameSeed: fileNameSeed);
     }
     throw StateError('No image input available to save');
+  }
+
+  /// Downloads a remote image URL and stores it as a local asset.
+  Future<Map<String, dynamic>> _downloadUrl(
+    String url, {
+    required String fileNameSeed,
+  }) async {
+    services.logs.add(LogLevel.info, 'Downloading image: $url', scope: 'ImageSave');
+    final media = await services.downloader.download(url);
+    final asset = await services.mediaRepository.saveBytes(
+      workflowId: services.workflowId,
+      fileName: '$fileNameSeed.${_extensionFor(media.mimeType)}',
+      mimeType: media.mimeType,
+      bytes: media.bytes,
+    );
+    return _assetPayload(asset);
   }
 
   Future<Map<String, dynamic>> _saveBase64(
