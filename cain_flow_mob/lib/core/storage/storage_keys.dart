@@ -6,6 +6,9 @@ abstract final class StorageKeys {
   static const providerSettings = 'settings:providers';
   static const mediaAssetIndex = 'media:asset:index';
   static const logRing = 'logs:ring';
+  static const historyRing = 'history:ring';
+  static const promptLibrary = 'prompts:library';
+  static const requestStats = 'stats:requests';
 
   static String workflowDocument(String id) => 'workflow:$id';
 

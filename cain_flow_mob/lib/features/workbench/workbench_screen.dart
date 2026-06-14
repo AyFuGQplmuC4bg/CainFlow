@@ -5,12 +5,14 @@ import 'package:signals/signals_flutter.dart';
 import '../execution/cain_flow_node_executor.dart';
 import '../execution/execution_services.dart';
 import '../execution/execution_signals.dart';
+import '../history/history_repository.dart';
 import '../logs/log_panel.dart';
 import '../logs/log_signals.dart';
 import '../media/media_repository.dart';
 import '../nodes/node_registry.dart';
 import '../nodes/node_definition.dart';
 import '../settings/provider_settings.dart';
+import '../statistics/request_statistics.dart';
 import '../settings/settings_screen.dart';
 import '../workflow/workflow_manager.dart';
 import '../workflow/workflow_repository.dart';
@@ -43,6 +45,7 @@ WorkbenchExecutionController _buildDefaultController() {
     providerClient: client,
     mediaRepository: MediaRepository(store: store),
     logs: logSignals,
+    statistics: RequestStatistics(store: store),
   );
   return WorkbenchExecutionController(
     workbench: workbenchSignals,
@@ -50,6 +53,7 @@ WorkbenchExecutionController _buildDefaultController() {
     executionSignals: executionSignals,
     logs: logSignals,
     maxConcurrency: runtime.maxConcurrency,
+    historyRepository: HistoryRepository(store: store),
   );
 }
 

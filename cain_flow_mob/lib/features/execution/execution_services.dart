@@ -3,6 +3,7 @@ import '../logs/log_signals.dart';
 import '../media/media_downloader.dart';
 import '../media/media_repository.dart';
 import '../settings/provider_settings.dart';
+import '../statistics/request_statistics.dart';
 
 /// Bundle of runtime collaborators a concrete node executor needs.
 ///
@@ -16,6 +17,7 @@ class ExecutionServices {
     required this.logs,
     this.workflowId = '',
     this.downloaderOverride,
+    this.statistics,
   });
 
   final ProviderSettingsRepository settingsRepository;
@@ -25,6 +27,9 @@ class ExecutionServices {
 
   /// Optional injected downloader (tests); production resolves a real one.
   final MediaDownloader? downloaderOverride;
+
+  /// Optional request statistics sink.
+  final RequestStatistics? statistics;
 
   /// Media downloader, defaulting to a real `dart:io` implementation.
   MediaDownloader get downloader => downloaderOverride ?? MediaDownloader();
@@ -39,6 +44,7 @@ class ExecutionServices {
       mediaRepository: mediaRepository,
       logs: logs,
       downloaderOverride: downloaderOverride,
+      statistics: statistics,
       workflowId: workflowId ?? this.workflowId,
     );
   }

@@ -283,7 +283,13 @@ class CainFlowNodeExecutor implements NodeExecutor {
       referenceImages: await _collectReferenceImages(context.inputs),
     );
 
-    final response = await _send(node: node, request: request, scope: 'TextChat');
+    final response = await _send(
+      node: node,
+      request: request,
+      scope: 'TextChat',
+      providerName: provider.name,
+      modelName: model.modelId,
+    );
     final text = _parseChatText(model.protocol, response.body);
     return NodeExecutionResult(nodeId: node.id, outputs: {'text': text});
   }
@@ -323,7 +329,13 @@ class CainFlowNodeExecutor implements NodeExecutor {
     );
 
     final response =
-        await _send(node: node, request: request, scope: 'ImageGenerate');
+        await _send(
+          node: node,
+          request: request,
+          scope: 'ImageGenerate',
+          providerName: provider.name,
+          modelName: model.modelId,
+        );
     final image = await _parseImage(
       protocol: model.protocol,
       body: response.body,
@@ -446,6 +458,8 @@ class CainFlowNodeExecutor implements NodeExecutor {
     required FlowNode node,
     required ProviderRequest request,
     required String scope,
+    String providerName = '',
+    String modelName = '',
   }) async {
     services.logs.add(
       LogLevel.info,
@@ -461,9 +475,15 @@ class CainFlowNodeExecutor implements NodeExecutor {
           '$scope failed (${error.statusCode} ${error.category.name}): ${error.safeUrl}',
           scope: scope,
         );
+        services.statistics?.record(
+          provider: providerName,
+          model: modelName,
+          success: false,
+        );
         throw ProviderTransportException(error);
       }
       services.logs.add(LogLevel.info, '$scope succeeded', scope: scope);
+      services.statistics?.record(provider: providerName, model: modelName);
       return response;
     } on ProviderTransportException catch (e) {
       services.logs.add(

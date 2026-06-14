@@ -1,6 +1,7 @@
 import '../execution/execution_signals.dart';
 import '../execution/node_executor.dart';
 import '../execution/workflow_runner.dart';
+import '../history/history_repository.dart';
 import '../logs/log_signals.dart';
 import 'workbench_signals.dart';
 import 'workbench_workflow_mapper.dart';
@@ -15,6 +16,7 @@ class WorkbenchExecutionController {
     ExecutionSignals? executionSignals,
     LogSignals? logs,
     this.maxConcurrency = 1,
+    this.historyRepository,
   }) : executionSignals = executionSignals ?? ExecutionSignals(),
        logs = logs ?? logSignals;
 
@@ -25,6 +27,9 @@ class WorkbenchExecutionController {
 
   /// Resolved per-run from settings by the screen; 1 keeps serial execution.
   final int maxConcurrency;
+
+  /// Optional history sink; when set, a completed run appends an entry.
+  final HistoryRepository? historyRepository;
 
   WorkflowRunner? _runner;
   bool _isRunning = false;
@@ -53,6 +58,7 @@ class WorkbenchExecutionController {
     try {
       final result = await runner.run(workflow);
       _recordImageOutputs(result);
+      _recordHistory(result);
       _onResult(result);
       return result;
     } catch (error) {
@@ -92,8 +98,32 @@ class WorkbenchExecutionController {
     });
   }
 
-  void _onResult(WorkflowRunResult result) {    switch (result.state) {
-      case WorkflowExecutionState.completed:
+  /// Appends a history entry for a completed run, capturing the last image
+  /// output (asset thumbnail or URL) as the entry's result pointer.
+  void _recordHistory(WorkflowRunResult result) {
+    final repo = historyRepository;
+    if (repo == null || result.state != WorkflowExecutionState.completed) {
+      return;
+    }
+    Map<String, dynamic>? lastImage;
+    for (final r in result.results.values) {
+      final image = r.outputs['image'];
+      if (image is Map) lastImage = Map<String, dynamic>.from(image);
+    }
+    repo.add(
+      HistoryEntry(
+        id: 'h_${DateTime.now().microsecondsSinceEpoch}',
+        workflowName: workbench.activeWorkflowName.value,
+        createdAt: DateTime.now().toUtc(),
+        thumbnailRelativePath:
+            lastImage?['thumbnailRelativePath']?.toString() ?? '',
+        resultRelativePath: lastImage?['relativePath']?.toString() ?? '',
+        resultUrl: lastImage?['url']?.toString() ?? '',
+      ),
+    );
+  }
+
+  void _onResult(WorkflowRunResult result) {    switch (result.state) {      case WorkflowExecutionState.completed:
         workbench.runState.value = WorkbenchRunState.idle;
         logs.add(LogLevel.info, 'Workflow run completed', scope: 'workbench');
       case WorkflowExecutionState.failed:
