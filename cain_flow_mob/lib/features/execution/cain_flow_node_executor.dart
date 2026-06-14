@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../../core/models/flow_node.dart';
 import '../../core/network/provider_client.dart';
+import '../camera/camera_prompt.dart';
 import '../logs/log_signals.dart';
 import '../media/image_ops.dart';
 import '../media/media_asset.dart';
@@ -286,18 +287,16 @@ class CainFlowNodeExecutor implements NodeExecutor {
     return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
   }
 
-  /// Builds a camera/shot prompt string from the node's shot + movement params.
+  /// Builds the camera-instruction prompt from the node's 5D viewpoint params
+  /// (pitch/yaw/distance/fov/roll), ported from the web camera-control node.
   NodeExecutionResult _executeCameraControl(
     FlowNode node,
     NodeExecutionContext context,
   ) {
-    final shot = _stringFrom(node.data['shot']) ?? 'medium';
-    final movement = _stringFrom(node.data['movement']) ?? 'static';
-    final parts = <String>['$shot shot'];
-    if (movement != 'static') parts.add('$movement camera movement');
+    final state = CameraState.fromData(node.data);
     return NodeExecutionResult(
       nodeId: node.id,
-      outputs: {'text': parts.join(', ')},
+      outputs: {'text': CameraPrompt.generate(state)},
     );
   }
 

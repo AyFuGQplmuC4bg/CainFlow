@@ -302,7 +302,7 @@ const nodeRegistry = NodeRegistry([
   NodeDefinition(
     type: 'CameraControl',
     title: 'Camera Control',
-    description: 'Builds a camera/shot prompt from settings and a reference.',
+    description: 'Viewpoint control: pitch/yaw/distance/FOV/roll → camera prompt.',
     inputPorts: [
       NodePortDefinition(name: 'image', type: 'image', label: 'Reference'),
     ],
@@ -311,18 +311,9 @@ const nodeRegistry = NodeRegistry([
     ],
     params: [
       NodeParamDefinition(
-        name: 'shot',
-        label: 'Shot',
-        control: NodeParamControl.select,
-        options: ['wide', 'medium', 'close-up', 'aerial', 'low angle'],
-        defaultValue: 'medium',
-      ),
-      NodeParamDefinition(
-        name: 'movement',
-        label: 'Movement',
-        control: NodeParamControl.select,
-        options: ['static', 'pan', 'zoom in', 'zoom out', 'dolly', 'orbit'],
-        defaultValue: 'static',
+        name: 'camera',
+        label: 'Viewpoint',
+        control: NodeParamControl.cameraEditor,
       ),
     ],
   ),

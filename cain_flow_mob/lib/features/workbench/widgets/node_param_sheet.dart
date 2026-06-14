@@ -18,6 +18,7 @@ class NodeParamSheet extends StatefulWidget {
     required this.onChanged,
     required this.onDelete,
     this.onPickImage,
+    this.onEditCamera,
   });
 
   final WorkbenchNode node;
@@ -29,6 +30,11 @@ class NodeParamSheet extends StatefulWidget {
   /// Picks an image and returns the saved asset id (or null if cancelled).
   /// Injected by the screen so this widget stays free of platform plugins.
   final Future<String?> Function()? onPickImage;
+
+  /// Opens the camera viewpoint editor seeded with [current] data and returns
+  /// the updated camera data map (or null if cancelled). Injected by the screen.
+  final Future<Map<String, dynamic>?> Function(Map<String, dynamic> current)?
+      onEditCamera;
 
   @override
   State<NodeParamSheet> createState() => _NodeParamSheetState();
@@ -120,10 +126,53 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
       NodeParamControl.select => _select(param),
       NodeParamControl.customParams => _customParams(param),
       NodeParamControl.imagePicker => _imagePicker(param),
+      NodeParamControl.cameraEditor => _cameraEditor(param),
       NodeParamControl.number => _textField(param, number: true),
       NodeParamControl.multiline => _textField(param, multiline: true),
       NodeParamControl.text => _textField(param),
     };
+  }
+
+  Widget _cameraEditor(NodeParamDefinition param) {
+    final has = _data.containsKey('pitch') || _data.containsKey('yaw');
+    final summary = has
+        ? 'yaw ${_data['yaw'] ?? 0}° · pitch ${_data['pitch'] ?? 0}° · '
+            'dist ${_data['distance'] ?? 0}'
+        : 'Default viewpoint';
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: param.label,
+        border: const OutlineInputBorder(),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              summary,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          TextButton.icon(
+            key: const ValueKey('edit_camera'),
+            onPressed: widget.onEditCamera == null
+                ? null
+                : () async {
+                    final result = await widget.onEditCamera!(
+                      Map<String, dynamic>.from(_data),
+                    );
+                    if (result != null) {
+                      setState(() => _data.addAll(result));
+                      widget.onChanged(Map<String, dynamic>.from(_data));
+                    }
+                  },
+            icon: const Icon(Icons.videocam_outlined),
+            label: const Text('Edit'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _imagePicker(NodeParamDefinition param) {

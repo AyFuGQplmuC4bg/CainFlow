@@ -100,28 +100,30 @@ void main() {
   });
 
   group('CameraControl', () {
-    test('builds a shot prompt from shot and movement params', () async {
+    test('generates a viewpoint prompt from 5D params', () async {
       final node = const FlowNode(
         id: 'cam',
         type: 'CameraControl',
         x: 0,
         y: 0,
-        data: {'shot': 'close-up', 'movement': 'zoom in'},
+        data: {'pitch': 45.0, 'yaw': 90.0, 'distance': 2.0, 'fov': 20.0, 'roll': 0.0},
       );
       final result = await _executor().execute(node, _context());
-      expect(result.outputs['text'], 'close-up shot, zoom in camera movement');
+      final text = result.outputs['text'] as String;
+      expect(text, contains('Camera-only transformation'));
+      expect(text, contains('high-angle'));
+      expect(text, contains('right side'));
+      expect(text, contains('extreme close-up'));
+      expect(text, contains('super-telephoto'));
     });
 
-    test('omits movement when static', () async {
-      final node = const FlowNode(
-        id: 'cam',
-        type: 'CameraControl',
-        x: 0,
-        y: 0,
-        data: {'shot': 'wide', 'movement': 'static'},
-      );
+    test('uses defaults when no params set (front view)', () async {
+      final node = const FlowNode(id: 'cam', type: 'CameraControl', x: 0, y: 0);
       final result = await _executor().execute(node, _context());
-      expect(result.outputs['text'], 'wide shot');
+      expect(
+        result.outputs['text'] as String,
+        contains('front three-quarter view'),
+      );
     });
   });
 }

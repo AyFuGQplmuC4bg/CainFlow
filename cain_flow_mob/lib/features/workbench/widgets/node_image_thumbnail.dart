@@ -4,9 +4,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../image_preview_screen.dart';
+
 /// Renders a small preview of an image payload (`{kind: url|asset, ...}`)
 /// produced by execution. URL payloads stream via [CachedNetworkImage];
-/// asset payloads resolve a local file under the media root.
+/// asset payloads resolve a local file under the media root. Tapping opens a
+/// full-screen, pinch-zoomable preview.
 class NodeImageThumbnail extends StatelessWidget {
   const NodeImageThumbnail({super.key, required this.payload, this.size = 64});
 
@@ -15,6 +18,22 @@ class NodeImageThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _openFullPreview(context),
+      child: _buildThumb(context),
+    );
+  }
+
+  Future<void> _openFullPreview(BuildContext context) async {
+    final provider = await imageProviderForPayload(
+      payload,
+      resolveAsset: _resolveAssetFile,
+    );
+    if (provider == null || !context.mounted) return;
+    await ImagePreviewScreen.open(context, imageProvider: provider);
+  }
+
+  Widget _buildThumb(BuildContext context) {
     final kind = payload['kind']?.toString();
 
     if (kind == 'url') {

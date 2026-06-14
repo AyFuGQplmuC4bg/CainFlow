@@ -7,6 +7,7 @@ enum NodeParamControl {
   modelPicker,
   customParams,
   imagePicker,
+  cameraEditor,
 }
 
 class NodeParamDefinition {

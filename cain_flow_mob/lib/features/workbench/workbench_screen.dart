@@ -10,6 +10,7 @@ import '../logs/log_panel.dart';
 import '../logs/log_signals.dart';
 import '../media/media_repository.dart';
 import '../nodes/node_registry.dart';
+import '../camera/camera_prompt.dart';
 import '../nodes/node_definition.dart';
 import '../settings/provider_settings.dart';
 import '../statistics/request_statistics.dart';
@@ -27,6 +28,7 @@ import 'workbench_signals.dart';
 import 'connection_rules.dart';
 import 'widgets/connection_layer.dart';
 import 'widgets/node_card.dart';
+import 'camera_editor_screen.dart';
 import 'widgets/node_param_sheet.dart';
 
 /// Default production controller wired to MMKV-backed services and the
@@ -298,10 +300,23 @@ Future<void> _openNodeEditor(BuildContext context, String nodeId) async {
       models: models,
       onChanged: (data) => workbenchSignals.updateNodeData(nodeId, data),
       onPickImage: () => _pickAndStoreImage(),
+      onEditCamera: (current) => _editCamera(context, current),
       onDelete: () {
         workbenchSignals.removeNode(nodeId);
         Navigator.of(sheetContext).pop();
       },
+    ),
+  );
+}
+
+/// Opens the full-screen camera viewpoint editor and returns updated data.
+Future<Map<String, dynamic>?> _editCamera(
+  BuildContext context,
+  Map<String, dynamic> current,
+) {
+  return Navigator.of(context).push<Map<String, dynamic>>(
+    MaterialPageRoute(
+      builder: (_) => CameraEditorScreen(initial: CameraState.fromData(current)),
     ),
   );
 }
