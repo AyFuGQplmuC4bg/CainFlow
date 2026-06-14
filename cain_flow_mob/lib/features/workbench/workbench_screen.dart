@@ -20,11 +20,13 @@ import '../statistics/request_statistics.dart';
 import '../settings/settings_screen.dart';
 import '../workflow/workflow_manager.dart';
 import '../workflow/workflow_repository.dart';
+import '../../core/models/workflow_document.dart';
 import '../../core/network/provider_client.dart';
 import '../../core/network/retrying_provider_client.dart';
 import '../../core/storage/in_memory_local_kv_store.dart';
 import '../../core/storage/local_kv_store.dart';
 import '../../core/storage/mmkv_local_kv_store.dart';
+import 'workbench_autosave.dart';
 import 'workbench_execution_controller.dart';
 import 'workbench_history.dart';
 import 'workbench_signals.dart';
@@ -75,17 +77,51 @@ final WorkbenchHistory workbenchHistory = () {
 }();
 
 /// Lazily-built workflow manager backed by MMKV, used by the Workflows rail.
+/// Also restores the last active workflow (including image previews) on startup.
 WorkflowManager? _defaultWorkflowManager;
 WorkflowManager get workflowManager {
   if (_defaultWorkflowManager != null) return _defaultWorkflowManager!;
   final store = _safeStore();
+  final repo = WorkflowRepository(store: store);
   final manager = WorkflowManager(
-    repository: WorkflowRepository(store: store),
+    repository: repo,
     workbench: workbenchSignals,
     media: MediaRepository(store: store),
+    flushActive: () => workflowAutoSave.flush(),
+    onWorkflowApplied: _restoreImageOutputs,
   );
   manager.refresh();
+
+  // Restore the workflow that was open when the app was last closed.
+  final lastId = repo.loadActiveId();
+  if (lastId != null && lastId.isNotEmpty) {
+    manager.switchTo(lastId);
+  }
+
   return _defaultWorkflowManager = manager;
+}
+
+/// Auto-save: debounced, only fires when the workflow already has a saved ID.
+WorkflowAutoSave? _autoSave;
+WorkflowAutoSave get workflowAutoSave {
+  return _autoSave ??= WorkflowAutoSave(
+    workbench: workbenchSignals,
+    manager: workflowManager,
+  );
+}
+
+/// Restores `imageOutputs` from `_lastOutput` fields baked into each node's
+/// data map when a workflow document is loaded.
+void _restoreImageOutputs(WorkflowDocument document) {
+  for (final node in document.nodes) {
+    final last = node.data['_lastOutput'];
+    if (last is Map) {
+      executionSignals.setImageOutput(
+        node.id,
+        Map<String, dynamic>.from(last),
+      );
+    }
+  }
 }
 
 /// Returns the native MMKV store, falling back to an in-memory store when

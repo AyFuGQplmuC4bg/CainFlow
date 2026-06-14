@@ -104,16 +104,50 @@ class WorkbenchExecutionController {
 
   /// Captures image outputs (`{kind: url|asset}`) so the canvas can show
   /// thumbnails on ImageGenerate/ImagePreview/ImageImport nodes after a run.
+  ///
+  /// Also writes `_lastOutput` into each producing node's data map so the
+  /// payload survives workflow serialisation and can be restored on next load.
+  /// Nodes from earlier runs that are not in this run's outputs still retain
+  /// their previous `_lastOutput`, so old previews are not lost for nodes that
+  /// were not part of this execution.
   void _recordImageOutputs(WorkflowRunResult result) {
+    // Collect this run's new image outputs.
+    final newOutputs = <String, Map<String, dynamic>>{};
     result.results.forEach((nodeId, nodeResult) {
       final image = nodeResult.outputs['image'];
       if (image is Map) {
-        executionSignals.setImageOutput(
-          nodeId,
-          Map<String, dynamic>.from(image),
-        );
+        newOutputs[nodeId] = Map<String, dynamic>.from(image);
       }
     });
+
+    // Seed imageOutputs with any persisted _lastOutput from node data so that
+    // nodes not involved in this run still show their previous result.
+    for (final node in workbench.nodes.value) {
+      final last = node.data['_lastOutput'];
+      if (last is Map && !newOutputs.containsKey(node.id)) {
+        executionSignals.setImageOutput(
+          node.id,
+          Map<String, dynamic>.from(last),
+        );
+      }
+    }
+
+    // Apply and publish new outputs.
+    newOutputs.forEach((nodeId, payload) {
+      executionSignals.setImageOutput(nodeId, payload);
+    });
+
+    // Persist new outputs into node data (bypasses mutation tracking so this
+    // doesn't create an undo snapshot; the auto-save will pick it up).
+    if (newOutputs.isNotEmpty) {
+      workbench.nodes.value = [
+        for (final node in workbench.nodes.value)
+          if (newOutputs.containsKey(node.id))
+            node.withData({...node.data, '_lastOutput': newOutputs[node.id]})
+          else
+            node,
+      ];
+    }
   }
 
   /// Appends a history entry for a completed run, capturing the last image

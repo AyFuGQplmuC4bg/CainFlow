@@ -1,5 +1,6 @@
 import 'package:signals/signals.dart';
 
+import '../../core/models/workflow_document.dart';
 import '../media/media_repository.dart';
 import '../workbench/workbench_signals.dart';
 import '../workbench/workbench_workflow_mapper.dart';
@@ -24,6 +25,7 @@ class WorkflowManager {
     required this.workbench,
     this.media,
     this.flushActive,
+    this.onWorkflowApplied,
   });
 
   final WorkflowRepository repository;
@@ -31,8 +33,13 @@ class WorkflowManager {
   final MediaRepository? media;
 
   /// Optional callback to persist the active graph before switching away
-  /// (typically [WorkflowAutosave.flush]).
+  /// (typically [WorkflowAutoSave.flush]).
   final void Function()? flushActive;
+
+  /// Called after a workflow document is applied to the workbench. The
+  /// document is passed so callers can restore transient state (e.g. image
+  /// output previews from [FlowNode.data] `_lastOutput` fields).
+  final void Function(WorkflowDocument document)? onWorkflowApplied;
 
   final workflows = signal<List<WorkflowSummary>>(const []);
   final activeWorkflowId = signal<String?>(null);
@@ -56,6 +63,7 @@ class WorkflowManager {
       name: name ?? workbench.activeWorkflowName.value,
     );
     repository.saveWorkflow(id, document);
+    repository.saveActiveId(id);
     if (name != null && name.isNotEmpty) {
       workbench.activeWorkflowName.value = name;
     }
@@ -94,6 +102,8 @@ class WorkflowManager {
     flushActive?.call();
     applyWorkflowToWorkbench(workbench, document, name: document.name);
     activeWorkflowId.value = id;
+    repository.saveActiveId(id);
+    onWorkflowApplied?.call(document);
     return true;
   }
 
@@ -111,7 +121,10 @@ class WorkflowManager {
   /// Deletes [id] and cleans up its orphaned media.
   Future<void> delete(String id) async {
     repository.deleteWorkflow(id);
-    if (activeWorkflowId.value == id) activeWorkflowId.value = null;
+    if (activeWorkflowId.value == id) {
+      activeWorkflowId.value = null;
+      repository.clearActiveId();
+    }
     await media?.cleanOrphanedAssets(
       repository.listWorkflowIds().toSet()..add(workbench.activeWorkflowName.value),
     );

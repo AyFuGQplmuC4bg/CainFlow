@@ -57,4 +57,20 @@ class WorkflowRepository {
     final ids = listWorkflowIds()..remove(id);
     store.setString(StorageKeys.workflowIndex, jsonEncode(ids));
   }
+
+  /// Persists the id of the last active workflow so it can be restored on
+  /// next app launch.
+  void saveActiveId(String id) {
+    store.setString(StorageKeys.activeWorkflowId, id);
+  }
+
+  /// Returns the id that was last marked active, or null if none.
+  String? loadActiveId() {
+    final raw = store.getString(StorageKeys.activeWorkflowId);
+    return (raw == null || raw.isEmpty) ? null : raw;
+  }
+
+  void clearActiveId() {
+    store.remove(StorageKeys.activeWorkflowId);
+  }
 }
