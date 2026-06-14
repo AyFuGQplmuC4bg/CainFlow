@@ -4,6 +4,7 @@ import '../execution/node_executor.dart';
 import '../execution/workflow_runner.dart';
 import '../history/history_repository.dart';
 import '../logs/log_signals.dart';
+import 'completion_feedback.dart';
 import 'workbench_signals.dart';
 import 'workbench_workflow_mapper.dart';
 
@@ -18,6 +19,7 @@ class WorkbenchExecutionController {
     LogSignals? logs,
     this.maxConcurrency = 1,
     this.historyRepository,
+    this.feedback = const CompletionFeedback(),
   }) : executionSignals = executionSignals ?? ExecutionSignals(),
        logs = logs ?? logSignals;
 
@@ -31,6 +33,9 @@ class WorkbenchExecutionController {
 
   /// Optional history sink; when set, a completed run appends an entry.
   final HistoryRepository? historyRepository;
+
+  /// Plays haptic/sound cues when a run finishes.
+  final CompletionFeedback feedback;
 
   void Function()? _cancelActive;
   bool _isRunning = false;
@@ -175,9 +180,12 @@ class WorkbenchExecutionController {
     );
   }
 
-  void _onResult(WorkflowRunResult result) {    switch (result.state) {      case WorkflowExecutionState.completed:
+  void _onResult(WorkflowRunResult result) {
+    switch (result.state) {
+      case WorkflowExecutionState.completed:
         workbench.runState.value = WorkbenchRunState.idle;
         logs.add(LogLevel.info, 'Workflow run completed', scope: 'workbench');
+        feedback.success();
       case WorkflowExecutionState.failed:
         workbench.runState.value = WorkbenchRunState.idle;
         logs.add(
@@ -185,6 +193,7 @@ class WorkbenchExecutionController {
           'Workflow run failed: ${result.error}',
           scope: 'workbench',
         );
+        feedback.failure();
       case WorkflowExecutionState.canceled:
         workbench.runState.value = WorkbenchRunState.stopped;
         logs.add(LogLevel.warning, 'Workflow run canceled', scope: 'workbench');
