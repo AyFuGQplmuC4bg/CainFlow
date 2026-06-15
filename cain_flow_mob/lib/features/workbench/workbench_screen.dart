@@ -66,8 +66,10 @@ WorkbenchExecutionController _buildDefaultController() {
     maxConcurrency: runtime.maxConcurrency,
     historyRepository: HistoryRepository(store: store),
     feedback: CompletionFeedback(
-      soundEnabled: runtime.completionSoundEnabled,
-      hapticsEnabled: runtime.completionHapticsEnabled,
+      soundEnabledProvider: () =>
+          settingsRepository.load().runtime.completionSoundEnabled,
+      hapticsEnabledProvider: () =>
+          settingsRepository.load().runtime.completionHapticsEnabled,
     ),
   );
 }

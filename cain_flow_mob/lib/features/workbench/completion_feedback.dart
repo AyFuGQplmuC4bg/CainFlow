@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 /// without constructing a real [AudioPlayer] (whose constructor needs the
 /// plugin). The default uses audioplayers with the bundled asset.
 typedef CompletionSoundPlayer = Future<void> Function();
+typedef CompletionFeedbackToggle = bool Function();
 
 Future<void> _defaultSoundPlayer() async {
   // AssetSource is rooted at the `assets/` directory by the plugin.
@@ -17,17 +18,24 @@ Future<void> _defaultSoundPlayer() async {
 /// safe on platforms lacking haptics or audio.
 class CompletionFeedback {
   CompletionFeedback({
-    this.soundEnabled = true,
-    this.hapticsEnabled = true,
+    bool soundEnabled = true,
+    bool hapticsEnabled = true,
+    CompletionFeedbackToggle? soundEnabledProvider,
+    CompletionFeedbackToggle? hapticsEnabledProvider,
     CompletionSoundPlayer? soundPlayer,
-  }) : _soundPlayer = soundPlayer ?? _defaultSoundPlayer;
+  }) : _soundEnabledProvider = soundEnabledProvider ?? (() => soundEnabled),
+       _hapticsEnabledProvider =
+           hapticsEnabledProvider ?? (() => hapticsEnabled),
+       _soundPlayer = soundPlayer ?? _defaultSoundPlayer;
 
   /// Whether to play the notification sound on completion.
-  final bool soundEnabled;
+  bool get soundEnabled => _soundEnabledProvider();
 
   /// Whether to vibrate on completion (mobile only).
-  final bool hapticsEnabled;
+  bool get hapticsEnabled => _hapticsEnabledProvider();
 
+  final CompletionFeedbackToggle _soundEnabledProvider;
+  final CompletionFeedbackToggle _hapticsEnabledProvider;
   final CompletionSoundPlayer _soundPlayer;
 
   /// Success cue: a medium haptic pulse plus the notification sound, each
