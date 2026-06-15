@@ -1,3 +1,4 @@
+import '../background/background_execution_coordinator.dart';
 import '../execution/execution_signals.dart';
 import '../execution/iterative_workflow_runner.dart';
 import '../execution/node_executor.dart';
@@ -20,12 +21,16 @@ class WorkbenchExecutionController {
     this.maxConcurrency = 1,
     this.historyRepository,
     CompletionFeedback? feedback,
+    BackgroundExecutionCoordinator? backgroundCoordinator,
   }) : executionSignals = executionSignals ?? ExecutionSignals(),
        logs = logs ?? logSignals,
-       feedback = feedback ?? CompletionFeedback();
+       feedback = feedback ?? CompletionFeedback(),
+       backgroundCoordinator =
+           backgroundCoordinator ?? defaultBackgroundExecutionCoordinator;
 
   final WorkbenchSignals workbench;
   final NodeExecutor executor;
+  final BackgroundExecutionCoordinator? backgroundCoordinator;
   final ExecutionSignals executionSignals;
   final LogSignals logs;
 
@@ -40,6 +45,7 @@ class WorkbenchExecutionController {
 
   void Function()? _cancelActive;
   bool _isRunning = false;
+  String? _activeJobId;
 
   bool get isRunning => _isRunning;
 
@@ -49,8 +55,14 @@ class WorkbenchExecutionController {
     workbench.runState.value = WorkbenchRunState.running;
 
     final workflow = workbenchSignalsToWorkflow(workbench);
+    final backgroundJob = backgroundCoordinator?.enqueueWorkflow(
+      workflow: workflow,
+    );
     final hasControlFlow = workbench.nodes.value
         .any((n) => n.type.startsWith('Control'));
+    final coordinator = backgroundCoordinator;
+    final jobId = backgroundJob?.jobId;
+    _activeJobId = jobId;
 
     logs.add(
       LogLevel.info,
@@ -59,6 +71,9 @@ class WorkbenchExecutionController {
     );
 
     try {
+      if (jobId != null) {
+        coordinator?.markRunning(jobId);
+      }
       final WorkflowRunResult result;
       if (hasControlFlow) {
         final runner = IterativeWorkflowRunner(
@@ -83,9 +98,25 @@ class WorkbenchExecutionController {
       }
       _recordImageOutputs(result);
       _recordHistory(result);
+      if (jobId != null) {
+        switch (result.state) {
+          case WorkflowExecutionState.completed:
+            coordinator?.markCompleted(jobId);
+          case WorkflowExecutionState.failed:
+            coordinator?.markFailed(jobId, error: result.error);
+          case WorkflowExecutionState.canceled:
+            coordinator?.markCanceled(jobId);
+          case WorkflowExecutionState.idle:
+          case WorkflowExecutionState.running:
+            break;
+        }
+      }
       _onResult(result);
       return result;
     } catch (error) {
+      if (jobId != null) {
+        coordinator?.markFailed(jobId, error: error.toString());
+      }
       logs.add(
         LogLevel.error,
         'Workflow run crashed: $error',
@@ -95,6 +126,7 @@ class WorkbenchExecutionController {
     } finally {
       _isRunning = false;
       _cancelActive = null;
+      _activeJobId = null;
       if (workbench.runState.value == WorkbenchRunState.running) {
         workbench.runState.value = WorkbenchRunState.idle;
       }
@@ -104,6 +136,10 @@ class WorkbenchExecutionController {
   void stop() {
     if (!_isRunning) return;
     _cancelActive?.call();
+    final jobId = _activeJobId;
+    if (jobId != null) {
+      backgroundCoordinator?.markCanceled(jobId);
+    }
     workbench.runState.value = WorkbenchRunState.stopped;
     logs.add(LogLevel.info, 'Workflow run stop requested', scope: 'workbench');
   }
