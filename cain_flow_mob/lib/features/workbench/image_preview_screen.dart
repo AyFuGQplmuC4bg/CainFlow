@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
-import 'package:photo_view/photo_view.dart';
 
 /// Full-screen, pinch-zoomable preview of an image payload
 /// (`{kind: url|asset, ...}`). Opened by tapping a node thumbnail.
@@ -33,15 +33,29 @@ class ImagePreviewScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: PhotoView(
-        imageProvider: imageProvider,
-        backgroundDecoration: const BoxDecoration(color: Colors.black),
-        minScale: PhotoViewComputedScale.contained,
-        maxScale: PhotoViewComputedScale.covered * 4,
-        errorBuilder: (context, error, stack) => const Center(
-          child: Icon(Icons.broken_image_outlined,
-              color: Colors.white54, size: 48),
+      body: ExtendedImage(
+        image: imageProvider,
+        fit: BoxFit.contain,
+        mode: ExtendedImageMode.gesture,
+        enableLoadState: true,
+        initGestureConfigHandler: (_) => GestureConfig(
+          minScale: 1,
+          maxScale: 4,
+          animationMinScale: 0.8,
+          animationMaxScale: 4.5,
         ),
+        loadStateChanged: (state) {
+          if (state.extendedImageLoadState == LoadState.failed) {
+            return const Center(
+              child: Icon(
+                Icons.broken_image_outlined,
+                color: Colors.white54,
+                size: 48,
+              ),
+            );
+          }
+          return null;
+        },
       ),
     );
   }
@@ -54,6 +68,16 @@ Future<ImageProvider?> imageProviderForPayload(
   required Future<File?> Function(String relativePath) resolveAsset,
 }) async {
   final kind = payload['kind']?.toString();
+  if (kind == 'images') {
+    final items = payload['items'];
+    if (items is List && items.isNotEmpty && items.last is Map) {
+      return imageProviderForPayload(
+        Map<String, dynamic>.from(items.last as Map),
+        resolveAsset: resolveAsset,
+      );
+    }
+    return null;
+  }
   if (kind == 'url') {
     final url = payload['url']?.toString() ?? '';
     if (url.isEmpty) return null;

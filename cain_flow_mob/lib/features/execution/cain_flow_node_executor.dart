@@ -75,7 +75,8 @@ class CainFlowNodeExecutor implements NodeExecutor {
     FlowNode node,
     NodeExecutionContext context,
   ) {
-    final value = _stringFrom(context.inputs['value']) ??
+    final value =
+        _stringFrom(context.inputs['value']) ??
         _stringFrom(node.data['value']) ??
         '';
     final compareTo = _stringFrom(node.data['compareTo']) ?? '';
@@ -101,7 +102,8 @@ class CainFlowNodeExecutor implements NodeExecutor {
   ) {
     final limit = _intFrom(node.data['count']) ?? 1;
     final iteration = _loopCounters[node.id] ?? 0;
-    final value = _stringFrom(context.inputs['value']) ??
+    final value =
+        _stringFrom(context.inputs['value']) ??
         _stringFrom(node.data['value']) ??
         '';
     if (iteration < limit) {
@@ -151,12 +153,11 @@ class CainFlowNodeExecutor implements NodeExecutor {
     NodeExecutionContext context,
   ) {
     final separator = _unescape(_stringFrom(node.data['separator']) ?? '\n');
-    final input = _stringFrom(context.inputs['text']) ??
+    final input =
+        _stringFrom(context.inputs['text']) ??
         _stringFrom(node.data['text']) ??
         '';
-    final pieces = separator.isEmpty
-        ? [input]
-        : input.split(separator);
+    final pieces = separator.isEmpty ? [input] : input.split(separator);
     final outputs = <String, dynamic>{};
     for (var i = 0; i < 3; i++) {
       outputs['part_${i + 1}'] = i < pieces.length ? pieces[i] : '';
@@ -211,7 +212,10 @@ class CainFlowNodeExecutor implements NodeExecutor {
       _ => ImageFit.contain,
     };
     final out = ImageOps.resize(bytes, width: width, height: height, fit: fit);
-    final payload = await _saveImageBytes(out, fileNameSeed: '${node.id}-resize');
+    final payload = await _saveImageBytes(
+      out,
+      fileNameSeed: '${node.id}-resize',
+    );
     return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
   }
 
@@ -220,8 +224,9 @@ class CainFlowNodeExecutor implements NodeExecutor {
     FlowNode node,
     NodeExecutionContext context,
   ) async {
-    final keys = context.inputs.keys.where((k) => k.startsWith('image')).toList()
-      ..sort();
+    final keys =
+        context.inputs.keys.where((k) => k.startsWith('image')).toList()
+          ..sort();
     final images = <Uint8List>[];
     for (final key in keys) {
       images.add(await _loadImageBytes(context.inputs[key]));
@@ -235,7 +240,10 @@ class CainFlowNodeExecutor implements NodeExecutor {
       _ => MergeLayout.horizontal,
     };
     final out = ImageOps.merge(images, layout: layout);
-    final payload = await _saveImageBytes(out, fileNameSeed: '${node.id}-merge');
+    final payload = await _saveImageBytes(
+      out,
+      fileNameSeed: '${node.id}-merge',
+    );
     return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
   }
 
@@ -247,7 +255,10 @@ class CainFlowNodeExecutor implements NodeExecutor {
     final a = await _loadImageBytes(context.inputs['imageA']);
     final b = await _loadImageBytes(context.inputs['imageB']);
     final out = ImageOps.compare(a, b);
-    final payload = await _saveImageBytes(out, fileNameSeed: '${node.id}-compare');
+    final payload = await _saveImageBytes(
+      out,
+      fileNameSeed: '${node.id}-compare',
+    );
     return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
   }
 
@@ -282,8 +293,10 @@ class CainFlowNodeExecutor implements NodeExecutor {
       }
     }
     final out = ImageOps.annotate(bytes, shapes);
-    final payload =
-        await _saveImageBytes(out, fileNameSeed: '${node.id}-annotate');
+    final payload = await _saveImageBytes(
+      out,
+      fileNameSeed: '${node.id}-annotate',
+    );
     return NodeExecutionResult(nodeId: node.id, outputs: {'image': payload});
   }
 
@@ -306,12 +319,16 @@ class CainFlowNodeExecutor implements NodeExecutor {
     if (input is Map) {
       final map = Map<String, dynamic>.from(input);
       final kind = _stringFrom(map['kind']);
+      if (kind == 'images') {
+        final items = map['items'];
+        if (items is List && items.isNotEmpty) {
+          return _loadImageBytes(items.last);
+        }
+      }
       if (kind == 'asset') {
         final relativePath = _stringFrom(map['relativePath']) ?? '';
         final root = await services.mediaRepository.mediaRoot();
-        final file = File(
-          '${root.path}${Platform.pathSeparator}$relativePath',
-        );
+        final file = File('${root.path}${Platform.pathSeparator}$relativePath');
         return Uint8List.fromList(await file.readAsBytes());
       }
       final b64 = _stringFrom(map['b64_json']) ?? _stringFrom(map['base64']);
@@ -338,22 +355,27 @@ class CainFlowNodeExecutor implements NodeExecutor {
     return _assetPayload(asset);
   }
 
-  /// Collects image inputs into provider-ready reference strings: local assets
-  /// become `data:` URIs (base64); remote URLs pass through unchanged. Scans
-  /// any input port whose name suggests an image (`image*`, `mask`).
-  Future<List<String>> _collectReferenceImages(
+  /// Collects image inputs into provider-ready references. `mask` is separated
+  /// from normal reference images so providers can send it as a dedicated
+  /// request field.
+  Future<_CollectedImageInputs> _collectImageInputs(
     Map<String, dynamic> inputs,
   ) async {
-    final keys = inputs.keys
-        .where((k) => k.startsWith('image') || k == 'mask')
-        .toList()
-      ..sort();
+    final keys =
+        inputs.keys.where((k) => k.startsWith('image') || k == 'mask').toList()
+          ..sort();
     final refs = <String>[];
+    String? maskImage;
     for (final key in keys) {
       final ref = await _imageInputToReference(inputs[key]);
-      if (ref != null) refs.add(ref);
+      if (ref == null) continue;
+      if (key == 'mask') {
+        maskImage = ref;
+      } else {
+        refs.add(ref);
+      }
     }
-    return refs;
+    return _CollectedImageInputs(referenceImages: refs, maskImage: maskImage);
   }
 
   Future<String?> _imageInputToReference(Object? input) async {
@@ -387,7 +409,11 @@ class CainFlowNodeExecutor implements NodeExecutor {
       settings: settings,
       activeModelId: settings.runtime.activeChatModelId,
     );
-    final provider = _resolveProvider(node: node, settings: settings, model: model);
+    final provider = _resolveProvider(
+      node: node,
+      settings: settings,
+      model: model,
+    );
     final prompt = _resolvePrompt(node: node, inputs: context.inputs);
 
     final streaming = _stringFrom(node.data['stream']) == 'true';
@@ -402,7 +428,9 @@ class CainFlowNodeExecutor implements NodeExecutor {
       prompt: prompt,
       systemPrompt: _stringFrom(node.data['systemPrompt']) ?? '',
       customParams: customParams,
-      referenceImages: await _collectReferenceImages(context.inputs),
+      referenceImages: (await _collectImageInputs(
+        context.inputs,
+      )).referenceImages,
     );
 
     final response = await _send(
@@ -438,8 +466,12 @@ class CainFlowNodeExecutor implements NodeExecutor {
       settings: settings,
       activeModelId: settings.runtime.activeImageModelId,
     );
-    final provider = _resolveProvider(node: node, settings: settings, model: model);
-    final prompt = _resolvePrompt(node: node, inputs: context.inputs);
+    final provider = _resolveProvider(
+      node: node,
+      settings: settings,
+      model: model,
+    );
+    final prompt = _resolveImagePrompt(node: node, inputs: context.inputs);
 
     if (model.protocol == ModelProtocol.newApiImageAsync) {
       return _executeAsyncImageGenerate(
@@ -452,24 +484,28 @@ class CainFlowNodeExecutor implements NodeExecutor {
       );
     }
 
+    final imageInputs = await _collectImageInputs(context.inputs);
     final request = ProviderRequestBuilder.buildImageRequest(
       provider: provider,
       model: model,
       prompt: prompt,
       size: _stringFrom(node.data['size']) ?? '',
       quality: _stringFrom(node.data['quality']) ?? '',
+      moderation: _stringFrom(node.data['moderation']) ?? '',
+      background: _stringFrom(node.data['background']) ?? '',
+      generationCount: _intFrom(node.data['generationCount']) ?? 1,
       customParams: _customParamsFrom(node.data['customParams']),
-      referenceImages: await _collectReferenceImages(context.inputs),
+      referenceImages: imageInputs.referenceImages,
+      maskImage: imageInputs.maskImage ?? '',
     );
 
-    final response =
-        await _send(
-          node: node,
-          request: request,
-          scope: 'ImageGenerate',
-          providerName: provider.name,
-          modelName: model.modelId,
-        );
+    final response = await _send(
+      node: node,
+      request: request,
+      scope: 'ImageGenerate',
+      providerName: provider.name,
+      modelName: model.modelId,
+    );
     final image = await _parseImage(
       protocol: model.protocol,
       body: response.body,
@@ -488,15 +524,21 @@ class CainFlowNodeExecutor implements NodeExecutor {
     required ProviderConfig provider,
     required String prompt,
   }) async {
+    final imageInputs = await _collectImageInputs(context.inputs);
     final submit = AsyncImageProtocol.buildSubmitRequest(
       provider: provider,
       model: model,
       prompt: prompt,
       size: _stringFrom(node.data['size']) ?? '',
       customParams: _customParamsFrom(node.data['customParams']),
+      referenceImages: imageInputs.referenceImages,
+      maskImage: imageInputs.maskImage,
     );
-    final submitResponse =
-        await _send(node: node, request: submit, scope: 'ImageGenerate(async)');
+    final submitResponse = await _send(
+      node: node,
+      request: submit,
+      scope: 'ImageGenerate(async)',
+    );
     final submitJson = _tryDecode(submitResponse.body);
     if (submitJson == null) {
       throw StateError('Async submit response was not valid JSON');
@@ -511,8 +553,9 @@ class CainFlowNodeExecutor implements NodeExecutor {
       scope: 'ImageGenerate(async)',
     );
 
-    final interval =
-        Duration(seconds: settings.runtime.asyncPollIntervalSeconds.clamp(1, 60));
+    final interval = Duration(
+      seconds: settings.runtime.asyncPollIntervalSeconds.clamp(1, 60),
+    );
     final deadline = DateTime.now().add(
       Duration(seconds: settings.runtime.asyncTimeoutSeconds.clamp(5, 3600)),
     );
@@ -657,15 +700,13 @@ class CainFlowNodeExecutor implements NodeExecutor {
     final candidateId =
         _stringFrom(node.data['providerId']) ??
         _stringFrom(node.extra['providerId']);
-    final ids = [
-      ?candidateId,
-      ...model.providerIds,
-    ];
+    final ids = [?candidateId, ...model.providerIds];
     for (final id in ids) {
       for (final provider in settings.providers) {
         if (provider.id == id) return provider;
       }
-    }    throw StateError('No provider configured for node ${node.id}');
+    }
+    throw StateError('No provider configured for node ${node.id}');
   }
 
   String _resolvePrompt({
@@ -678,14 +719,39 @@ class CainFlowNodeExecutor implements NodeExecutor {
         '';
   }
 
+  String _resolveImagePrompt({
+    required FlowNode node,
+    required Map<String, dynamic> inputs,
+  }) {
+    final prompt = _resolvePrompt(node: node, inputs: inputs).trim();
+    final systemPrompt =
+        (_stringFrom(inputs['system_prompt']) ??
+                _stringFrom(node.data['systemPrompt']) ??
+                '')
+            .trim();
+    final cameraPrompt =
+        (_stringFrom(inputs['camera_prompt']) ??
+                _stringFrom(node.data['cameraPrompt']) ??
+                '')
+            .trim();
+
+    final sections = <String>[
+      if (prompt.isNotEmpty) prompt,
+      if (systemPrompt.isNotEmpty) 'System instruction:\n$systemPrompt',
+      if (cameraPrompt.isNotEmpty)
+        'Camera composition instruction:\n$cameraPrompt',
+    ];
+    return sections.join('\n\n').trim();
+  }
+
   // --- Response parsing ----------------------------------------------------
 
   String _parseChatText(ModelProtocol protocol, String body) {
     final decoded = _tryDecode(body);
     if (decoded == null) return body;
     return switch (protocol) {
-      ModelProtocol.openai || ModelProtocol.newApiImageAsync =>
-        _openAiChatText(decoded) ?? '',
+      ModelProtocol.openai ||
+      ModelProtocol.newApiImageAsync => _openAiChatText(decoded) ?? '',
       ModelProtocol.google => _googleText(decoded) ?? '',
     };
   }
@@ -704,16 +770,25 @@ class CainFlowNodeExecutor implements NodeExecutor {
     if (protocol == ModelProtocol.openai) {
       final data = decoded['data'];
       if (data is List && data.isNotEmpty) {
-        final first = data.first;
-        if (first is Map) {
-          final url = _stringFrom(first['url']);
+        final images = <Map<String, dynamic>>[];
+        for (var i = 0; i < data.length; i++) {
+          final item = data[i];
+          if (item is! Map) continue;
+          final url = _stringFrom(item['url']);
           if (url != null && url.isNotEmpty) {
-            return {'kind': 'url', 'url': url};
+            images.add({'kind': 'url', 'url': url});
+            continue;
           }
-          final b64 = _stringFrom(first['b64_json']);
+          final b64 = _stringFrom(item['b64_json']);
           if (b64 != null && b64.isNotEmpty) {
-            return _saveBase64(b64, fileNameSeed: fileNameSeed);
+            images.add(
+              await _saveBase64(b64, fileNameSeed: '${fileNameSeed}_${i + 1}'),
+            );
           }
+        }
+        if (images.length == 1) return images.first;
+        if (images.length > 1) {
+          return _imageBundle(images);
         }
       }
     }
@@ -741,6 +816,23 @@ class CainFlowNodeExecutor implements NodeExecutor {
     if (input is Map) {
       final map = Map<String, dynamic>.from(input);
       final kind = _stringFrom(map['kind']);
+      if (kind == 'images') {
+        final items = map['items'];
+        if (items is! List || items.isEmpty) {
+          throw StateError('No image bundle items available to save');
+        }
+        final savedItems = <Map<String, dynamic>>[];
+        for (var i = 0; i < items.length; i++) {
+          savedItems.add(
+            await _persistImagePayload(
+              items[i],
+              fileNameSeed: '${fileNameSeed}_${i + 1}',
+              downloadRemote: downloadRemote,
+            ),
+          );
+        }
+        return _imageBundle(savedItems);
+      }
       if (kind == 'asset') return map;
       if (kind == 'url') {
         final url = _stringFrom(map['url']) ?? '';
@@ -770,7 +862,11 @@ class CainFlowNodeExecutor implements NodeExecutor {
     String url, {
     required String fileNameSeed,
   }) async {
-    services.logs.add(LogLevel.info, 'Downloading image: $url', scope: 'ImageSave');
+    services.logs.add(
+      LogLevel.info,
+      'Downloading image: $url',
+      scope: 'ImageSave',
+    );
     final media = await services.downloader.download(url);
     final asset = await services.mediaRepository.saveBytes(
       workflowId: services.workflowId,
@@ -806,12 +902,29 @@ class CainFlowNodeExecutor implements NodeExecutor {
       'byteLength': asset.byteLength,
     };
   }
+
+  Map<String, dynamic> _imageBundle(List<Map<String, dynamic>> images) {
+    final preview = Map<String, dynamic>.from(images.last)..remove('kind');
+    return {
+      ...preview,
+      'kind': 'images',
+      'items': images,
+      'count': images.length,
+    };
+  }
 }
 
 class _InlineImage {
   const _InlineImage(this.data, this.mimeType);
   final String data;
   final String mimeType;
+}
+
+class _CollectedImageInputs {
+  const _CollectedImageInputs({required this.referenceImages, this.maskImage});
+
+  final List<String> referenceImages;
+  final String? maskImage;
 }
 
 Map<String, dynamic>? _tryDecode(String body) {
@@ -857,7 +970,8 @@ _InlineImage? _googleInlineImage(Map<String, dynamic> json) {
         if (data != null && data.isNotEmpty) {
           return _InlineImage(
             data,
-            _stringFrom(inline['mimeType'] ?? inline['mime_type']) ?? 'image/png',
+            _stringFrom(inline['mimeType'] ?? inline['mime_type']) ??
+                'image/png',
           );
         }
       }

@@ -3,20 +3,13 @@ import 'package:signals/signals.dart';
 import '../nodes/node_registry.dart';
 import 'connection_rules.dart';
 
-enum WorkbenchRunState {
-  idle,
-  running,
-  stopped,
-}
+enum WorkbenchRunState { idle, running, stopped }
 
 class NodeOffset {
   const NodeOffset(this.dx, this.dy);
 
   factory NodeOffset.fromJson(Map<String, dynamic> json) {
-    return NodeOffset(
-      _numberFrom(json['dx']),
-      _numberFrom(json['dy']),
-    );
+    return NodeOffset(_numberFrom(json['dx']), _numberFrom(json['dy']));
   }
 
   final double dx;
@@ -237,7 +230,10 @@ class WorkbenchSignals {
     _recordMutation();
     nodes.value = [
       for (final node in nodes.value)
-        if (node.id == nodeId) node.withData(Map<String, dynamic>.from(data)) else node,
+        if (node.id == nodeId)
+          node.withData(Map<String, dynamic>.from(data))
+        else
+          node,
     ];
   }
 
@@ -286,8 +282,11 @@ class WorkbenchSignals {
   /// Begins a connection from an output port. A second tap on a compatible
   /// input port completes it via [completeConnection].
   void beginConnection(String nodeId, String port, String type) {
-    pendingConnection.value =
-        PendingConnection(fromNodeId: nodeId, fromPort: port, type: type);
+    pendingConnection.value = PendingConnection(
+      fromNodeId: nodeId,
+      fromPort: port,
+      type: type,
+    );
     lastConnectionRejection.value = ConnectionRejection.none;
   }
 
@@ -315,8 +314,11 @@ class WorkbenchSignals {
       toPort: toPort,
       toType: toType,
     );
-    final rejection =
-        validateConnection(attempt, nodes.value, connections.value);
+    final rejection = validateConnection(
+      attempt,
+      nodes.value,
+      connections.value,
+    );
     lastConnectionRejection.value = rejection;
     if (rejection != ConnectionRejection.none) {
       pendingConnection.value = null;
@@ -354,11 +356,30 @@ class WorkbenchSignals {
 
   void moveCanvas(NodeOffset offset) {
     final current = panOffset.value;
-    panOffset.value = NodeOffset(current.dx + offset.dx, current.dy + offset.dy);
+    panOffset.value = NodeOffset(
+      current.dx + offset.dx,
+      current.dy + offset.dy,
+    );
   }
 
   void setZoom(double value) {
-    zoom.value = value.clamp(0.5, 1.8);
+    zoom.value = _clampZoom(value);
+  }
+
+  void setZoomAroundViewportPoint(double value, NodeOffset viewportPoint) {
+    final currentZoom = zoom.value;
+    final nextZoom = _clampZoom(value);
+    if (nextZoom == currentZoom) return;
+
+    final currentPan = panOffset.value;
+    final canvasX = (viewportPoint.dx - currentPan.dx) / currentZoom;
+    final canvasY = (viewportPoint.dy - currentPan.dy) / currentZoom;
+
+    zoom.value = nextZoom;
+    panOffset.value = NodeOffset(
+      viewportPoint.dx - canvasX * nextZoom,
+      viewportPoint.dy - canvasY * nextZoom,
+    );
   }
 
   Map<String, dynamic> toSessionJson() {
@@ -375,10 +396,9 @@ class WorkbenchSignals {
   }
 
   void restoreSession(Map<String, dynamic> json) {
-    final decodedNodes = _listOfMaps(json['nodes'])
-        .map(WorkbenchNode.fromJson)
-        .where((node) => node.id.isNotEmpty)
-        .toList();
+    final decodedNodes = _listOfMaps(
+      json['nodes'],
+    ).map(WorkbenchNode.fromJson).where((node) => node.id.isNotEmpty).toList();
     final decodedConnections = _listOfMaps(json['connections'])
         .map(WorkbenchConnection.fromJson)
         .where((connection) => connection.id.isNotEmpty)
@@ -393,7 +413,7 @@ class WorkbenchSignals {
     if (pan is Map) {
       panOffset.value = NodeOffset.fromJson(Map<String, dynamic>.from(pan));
     }
-    zoom.value = _numberFrom(json['zoom'], fallback: zoom.value).clamp(0.5, 1.8);
+    zoom.value = _clampZoom(_numberFrom(json['zoom'], fallback: zoom.value));
   }
 
   void toggleRunState() {
@@ -410,6 +430,8 @@ double _numberFrom(Object? value, {double fallback = 0}) {
   if (value is num) return value.toDouble();
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
+
+double _clampZoom(double value) => value.clamp(0.5, 1.8).toDouble();
 
 List<Map<String, dynamic>> _listOfMaps(Object? value) {
   if (value is! List) return const [];

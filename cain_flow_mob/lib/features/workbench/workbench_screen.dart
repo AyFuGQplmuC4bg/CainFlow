@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:signals/signals_flutter.dart';
@@ -125,10 +127,7 @@ void _restoreImageOutputs(WorkflowDocument document) {
   for (final node in document.nodes) {
     final last = node.data['_lastOutput'];
     if (last is Map) {
-      executionSignals.setImageOutput(
-        node.id,
-        Map<String, dynamic>.from(last),
-      );
+      executionSignals.setImageOutput(node.id, Map<String, dynamic>.from(last));
     }
   }
 }
@@ -184,7 +183,9 @@ class WorkbenchScreen extends SignalWidget {
             padding: const EdgeInsets.only(right: 4),
             child: FilledButton.icon(
               onPressed: running ? _controller.stop : _controller.run,
-              icon: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded),
+              icon: Icon(
+                running ? Icons.stop_rounded : Icons.play_arrow_rounded,
+              ),
               label: Text(running ? context.l10n.stop : context.l10n.run),
             ),
           ),
@@ -206,12 +207,17 @@ class WorkbenchScreen extends SignalWidget {
               const PopupMenuDivider(),
               PopupMenuItem(
                 value: _OverflowAction.save,
-                child: _OverflowItem(Icons.save_outlined, context.l10n.saveWorkflow),
+                child: _OverflowItem(
+                  Icons.save_outlined,
+                  context.l10n.saveWorkflow,
+                ),
               ),
               PopupMenuItem(
                 value: _OverflowAction.logs,
                 child: _OverflowItem(
-                  hasErrors ? Icons.error_outline_rounded : Icons.receipt_long_outlined,
+                  hasErrors
+                      ? Icons.error_outline_rounded
+                      : Icons.receipt_long_outlined,
                   context.l10n.logs,
                 ),
               ),
@@ -237,11 +243,19 @@ class WorkbenchScreen extends SignalWidget {
         workbenchHistory.redo();
       case _OverflowAction.save:
         final id = workflowManager.save();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(context.l10n.savedWorkflowSnack(state.activeWorkflowName.value)),
-          duration: const Duration(seconds: 2),
-        ));
-        logSignals.add(LogLevel.info, 'Workflow saved: $id', scope: 'workbench');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.l10n.savedWorkflowSnack(state.activeWorkflowName.value),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        logSignals.add(
+          LogLevel.info,
+          'Workflow saved: $id',
+          scope: 'workbench',
+        );
       case _OverflowAction.logs:
         _showLogs(context);
       case _OverflowAction.settings:
@@ -282,20 +296,32 @@ class WorkbenchScreen extends SignalWidget {
             tooltip: context.l10n.saveWorkflow,
             onPressed: () {
               final id = workflowManager.save();
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(context.l10n.savedWorkflowSnack(state.activeWorkflowName.value)),
-                duration: const Duration(seconds: 2),
-              ));
-              logSignals.add(LogLevel.info, 'Workflow saved: $id', scope: 'workbench');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    context.l10n.savedWorkflowSnack(
+                      state.activeWorkflowName.value,
+                    ),
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+              logSignals.add(
+                LogLevel.info,
+                'Workflow saved: $id',
+                scope: 'workbench',
+              );
             },
             icon: const Icon(Icons.save_outlined),
           ),
           IconButton(
             tooltip: context.l10n.logs,
             onPressed: () => _showLogs(context),
-            icon: Icon(hasErrors
-                ? Icons.error_outline_rounded
-                : Icons.receipt_long_outlined),
+            icon: Icon(
+              hasErrors
+                  ? Icons.error_outline_rounded
+                  : Icons.receipt_long_outlined,
+            ),
           ),
           IconButton(
             tooltip: context.l10n.settings,
@@ -306,7 +332,9 @@ class WorkbenchScreen extends SignalWidget {
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
               onPressed: running ? _controller.stop : _controller.run,
-              icon: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded),
+              icon: Icon(
+                running ? Icons.stop_rounded : Icons.play_arrow_rounded,
+              ),
               label: Text(running ? context.l10n.stop : context.l10n.run),
             ),
           ),
@@ -359,7 +387,10 @@ Future<void> _showNodePicker(BuildContext context) async {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text(context.l10n.addNode, style: theme.textTheme.titleMedium),
+                child: Text(
+                  context.l10n.addNode,
+                  style: theme.textTheme.titleMedium,
+                ),
               ),
               Flexible(
                 child: ListView(
@@ -370,8 +401,7 @@ Future<void> _showNodePicker(BuildContext context) async {
                       ListTile(
                         title: Text(definition.title),
                         subtitle: Text(definition.description),
-                        onTap: () =>
-                            Navigator.of(context).pop(definition.type),
+                        onTap: () => Navigator.of(context).pop(definition.type),
                       ),
                   ],
                 ),
@@ -538,17 +568,17 @@ Future<void> _workflowActions(BuildContext context, String id) async {
   );
   if (action == 'rename') {
     if (!context.mounted) return;
-    final name = await _promptForName(context, title: context.l10n.renameWorkflow);
+    final name = await _promptForName(
+      context,
+      title: context.l10n.renameWorkflow,
+    );
     if (name != null && name.isNotEmpty) workflowManager.rename(id, name);
   } else if (action == 'delete') {
     await workflowManager.delete(id);
   }
 }
 
-Future<String?> _promptForName(
-  BuildContext context, {
-  required String title,
-}) {
+Future<String?> _promptForName(BuildContext context, {required String title}) {
   final controller = TextEditingController();
   return showDialog<String>(
     context: context,
@@ -566,8 +596,7 @@ Future<String?> _promptForName(
           child: Text(context.l10n.cancel),
         ),
         FilledButton(
-          onPressed: () =>
-              Navigator.of(context).pop(controller.text.trim()),
+          onPressed: () => Navigator.of(context).pop(controller.text.trim()),
           child: Text(context.l10n.ok),
         ),
       ],
@@ -718,7 +747,11 @@ class _MiniInspector extends SignalWidget {
                 ),
                 child: Text(
                   badge.code,
-                  style: CainTokens.mono(9, weight: FontWeight.w700, color: badge.color),
+                  style: CainTokens.mono(
+                    9,
+                    weight: FontWeight.w700,
+                    color: badge.color,
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -771,8 +804,10 @@ class _MiniInspector extends SignalWidget {
 
 /// Inline badge data for the mini-inspector (mirrors node_card.dart logic).
 ({Color color, String code}) _miniNodeBadge(String type) {
-  if (type.startsWith('Control')) return (color: CainTokens.signalControl, code: _miniCode(type));
-  if (type.startsWith('Image') || type == 'CameraControl') return (color: CainTokens.signalImage, code: _miniCode(type));
+  if (type.startsWith('Control'))
+    return (color: CainTokens.signalControl, code: _miniCode(type));
+  if (type.startsWith('Image') || type == 'CameraControl')
+    return (color: CainTokens.signalImage, code: _miniCode(type));
   return (color: CainTokens.signalText, code: _miniCode(type));
 }
 
@@ -808,8 +843,8 @@ class _MiniStatusLine extends StatelessWidget {
     final suffix = duration == null
         ? ''
         : snap.state == NodeRunState.running
-            ? '  ${(duration.inMilliseconds / 1000).toStringAsFixed(1)}s'
-            : '  ${(duration.inMilliseconds / 1000).toStringAsFixed(2)}s';
+        ? '  ${(duration.inMilliseconds / 1000).toStringAsFixed(1)}s'
+        : '  ${(duration.inMilliseconds / 1000).toStringAsFixed(2)}s';
     return Row(
       children: [
         Container(
@@ -818,10 +853,7 @@ class _MiniStatusLine extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        Text(
-          '$label$suffix',
-          style: CainTokens.mono(10, color: color),
-        ),
+        Text('$label$suffix', style: CainTokens.mono(10, color: color)),
       ],
     );
   }
@@ -870,10 +902,22 @@ class _WorkflowDrawer extends SignalWidget {
                         decoration: BoxDecoration(
                           color: CainTokens.phosphor,
                           shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: CainTokens.phosphor.withValues(alpha: 0.6), blurRadius: 6)],
+                          boxShadow: [
+                            BoxShadow(
+                              color: CainTokens.phosphor.withValues(alpha: 0.6),
+                              blurRadius: 6,
+                            ),
+                          ],
                         ),
                       ),
-                      Text('CAINFLOW', style: CainTokens.display(14, weight: FontWeight.w700, color: CainTokens.phosphor)),
+                      Text(
+                        'CAINFLOW',
+                        style: CainTokens.display(
+                          14,
+                          weight: FontWeight.w700,
+                          color: CainTokens.phosphor,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -901,7 +945,9 @@ class _WorkflowDrawer extends SignalWidget {
                       label: Text(context.l10n.addNode),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: CainTokens.signalText,
-                        side: BorderSide(color: CainTokens.signalText.withValues(alpha: 0.4)),
+                        side: BorderSide(
+                          color: CainTokens.signalText.withValues(alpha: 0.4),
+                        ),
                       ),
                     ),
                   ),
@@ -974,9 +1020,15 @@ class _WorkflowDrawer extends SignalWidget {
             // Bottom links
             ListTile(
               dense: true,
-              leading: Icon(Icons.receipt_long_outlined, size: 20, color: CainTokens.inkDim),
-              title: Text(context.l10n.logs,
-                  style: CainTokens.mono(12, color: CainTokens.inkDim)),
+              leading: Icon(
+                Icons.receipt_long_outlined,
+                size: 20,
+                color: CainTokens.inkDim,
+              ),
+              title: Text(
+                context.l10n.logs,
+                style: CainTokens.mono(12, color: CainTokens.inkDim),
+              ),
               onTap: () {
                 Navigator.of(context).pop();
                 _showLogs(context);
@@ -984,9 +1036,15 @@ class _WorkflowDrawer extends SignalWidget {
             ),
             ListTile(
               dense: true,
-              leading: Icon(Icons.tune_rounded, size: 20, color: CainTokens.inkDim),
-              title: Text(context.l10n.settings,
-                  style: CainTokens.mono(12, color: CainTokens.inkDim)),
+              leading: Icon(
+                Icons.tune_rounded,
+                size: 20,
+                color: CainTokens.inkDim,
+              ),
+              title: Text(
+                context.l10n.settings,
+                style: CainTokens.mono(12, color: CainTokens.inkDim),
+              ),
               onTap: () {
                 Navigator.of(context).pop();
                 _showSettings(context);
@@ -1089,8 +1147,91 @@ class _WorkflowRail extends SignalWidget {
   }
 }
 
-class _CanvasStage extends SignalWidget {
+class _CanvasStage extends SignalStatefulWidget {
   const _CanvasStage();
+
+  @override
+  State<_CanvasStage> createState() => _CanvasStageState();
+}
+
+class _CanvasStageState extends State<_CanvasStage> {
+  final Map<int, Offset> _touchPoints = {};
+  double? _pinchStartDistance;
+  double? _pinchStartZoom;
+
+  bool get _isMobilePlatform {
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android || TargetPlatform.iOS => true,
+      _ => false,
+    };
+  }
+
+  bool get _isDesktopPlatform {
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.linux ||
+      TargetPlatform.macOS ||
+      TargetPlatform.windows => true,
+      _ => false,
+    };
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event, WorkbenchSignals state) {
+    if (!_isDesktopPlatform || event is! PointerScrollEvent) return;
+
+    final zoomDelta = -event.scrollDelta.dy * 0.0015;
+    if (zoomDelta == 0) return;
+    state.setZoomAroundViewportPoint(
+      state.zoom.value + zoomDelta,
+      NodeOffset(event.localPosition.dx, event.localPosition.dy),
+    );
+  }
+
+  void _handleTouchPointerDown(PointerDownEvent event) {
+    if (!_isTouchGesturePointer(event)) return;
+    _touchPoints[event.pointer] = event.localPosition;
+    _resetPinchBaseline();
+  }
+
+  void _handleTouchPointerMove(PointerMoveEvent event, WorkbenchSignals state) {
+    if (!_isTouchGesturePointer(event) ||
+        !_touchPoints.containsKey(event.pointer)) {
+      return;
+    }
+
+    _touchPoints[event.pointer] = event.localPosition;
+    if (_touchPoints.length < 2) return;
+
+    final points = _touchPoints.values.take(2).toList(growable: false);
+    final distance = (points[0] - points[1]).distance;
+    if (distance == 0) return;
+
+    _pinchStartDistance ??= distance;
+    _pinchStartZoom ??= state.zoom.value;
+
+    final midpoint = Offset(
+      (points[0].dx + points[1].dx) / 2,
+      (points[0].dy + points[1].dy) / 2,
+    );
+    state.setZoomAroundViewportPoint(
+      _pinchStartZoom! * (distance / _pinchStartDistance!),
+      NodeOffset(midpoint.dx, midpoint.dy),
+    );
+  }
+
+  void _handleTouchPointerEnd(PointerEvent event) {
+    if (!_isTouchGesturePointer(event)) return;
+    _touchPoints.remove(event.pointer);
+    _resetPinchBaseline();
+  }
+
+  bool _isTouchGesturePointer(PointerEvent event) {
+    return _isMobilePlatform && event.kind == PointerDeviceKind.touch;
+  }
+
+  void _resetPinchBaseline() {
+    _pinchStartDistance = null;
+    _pinchStartZoom = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1109,96 +1250,107 @@ class _CanvasStage extends SignalWidget {
         ),
     ];
 
-    return ColoredBox(
-      color: theme.scaffoldBackgroundColor,
-      child: Stack(
-        children: [
-          const Positioned.fill(child: _WorkbenchGrid()),
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                state.clearSelection();
-                state.cancelPendingConnection();
-              },
-              onLongPress: () => _showNodePicker(context),
-              onPanUpdate: (details) {
-                state.moveCanvas(
-                  NodeOffset(details.delta.dx, details.delta.dy),
-                );
-              },
-              child: ConnectionLayer(
-                nodes: displayNodes,
-                connections: state.connections.value,
-                zoom: zoom,
-                imageOutputs:
-                    executionSignals.imageOutputs.value.keys.toSet(),
-              ),
-            ),
-          ),
-          for (final node in displayNodes)
-            Positioned(
-              left: node.x,
-              top: node.y,
-              child: Transform.scale(
-                scale: zoom,
-                alignment: Alignment.topLeft,
-                child: NodeCard(
-                  node: node,
-                  definition: nodeRegistry.get(node.type),
-                  selected: state.selectedNodeId.value == node.id,
-                  imagePayload: _cardImagePayload(node),
-                  runState:
-                      executionSignals.nodeStates.value[node.id]?.state,
-                  pollText: executionSignals.pollProgress.value[node.id],
-                  pendingFromPort:
-                      state.pendingConnection.value?.fromNodeId == node.id
-                          ? state.pendingConnection.value?.fromPort
-                          : null,
-                  onSelect: () => state.selectNode(node.id),
-                  onOpen: () => _openNodeEditor(context, node.id),
-                  onPortTap: (port, isOutput) =>
-                      _handlePortTap(context, node.id, port, isOutput),
-                  onMove: (offset) {
-                    state.moveNode(
-                      node.id,
-                      NodeOffset(offset.dx / zoom, offset.dy / zoom),
-                    );
-                  },
+    return Listener(
+      onPointerSignal: (event) => _handlePointerSignal(event, state),
+      onPointerDown: _handleTouchPointerDown,
+      onPointerMove: (event) => _handleTouchPointerMove(event, state),
+      onPointerUp: _handleTouchPointerEnd,
+      onPointerCancel: _handleTouchPointerEnd,
+      child: ColoredBox(
+        color: theme.scaffoldBackgroundColor,
+        child: Stack(
+          children: [
+            const Positioned.fill(child: _WorkbenchGrid()),
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  state.clearSelection();
+                  state.cancelPendingConnection();
+                },
+                onLongPress: () => _showNodePicker(context),
+                onPanUpdate: (details) {
+                  if (_isMobilePlatform && _touchPoints.length > 1) return;
+                  state.moveCanvas(
+                    NodeOffset(details.delta.dx, details.delta.dy),
+                  );
+                },
+                child: ConnectionLayer(
+                  nodes: displayNodes,
+                  connections: state.connections.value,
+                  zoom: zoom,
+                  imageOutputs: executionSignals.imageOutputs.value.keys
+                      .toSet(),
                 ),
               ),
             ),
-          Positioned(
-            left: 16,
-            bottom: 16,
-            child: _StatusChip(
-              label: _executionStatusLabel(executionSignals.workflowState.value, context.l10n),
-              value: executionSignals.isRunning.value
-                  ? '${executionSignals.completedCount.value}/'
-                      '${executionSignals.totalCount.value}'
-                  : state.graphSummary.value,
-              color: _statusColor(executionSignals.workflowState.value),
+            for (final node in displayNodes)
+              Positioned(
+                left: node.x,
+                top: node.y,
+                child: Transform.scale(
+                  scale: zoom,
+                  alignment: Alignment.topLeft,
+                  child: NodeCard(
+                    node: node,
+                    definition: nodeRegistry.get(node.type),
+                    selected: state.selectedNodeId.value == node.id,
+                    imagePayload: _cardImagePayload(node),
+                    runState: executionSignals.nodeStates.value[node.id]?.state,
+                    pollText: executionSignals.pollProgress.value[node.id],
+                    pendingFromPort:
+                        state.pendingConnection.value?.fromNodeId == node.id
+                        ? state.pendingConnection.value?.fromPort
+                        : null,
+                    onSelect: () => state.selectNode(node.id),
+                    onOpen: () => _openNodeEditor(context, node.id),
+                    onPortTap: (port, isOutput) =>
+                        _handlePortTap(context, node.id, port, isOutput),
+                    onMove: (offset) {
+                      if (_isMobilePlatform && _touchPoints.length > 1) return;
+                      state.moveNode(
+                        node.id,
+                        NodeOffset(offset.dx / zoom, offset.dy / zoom),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            Positioned(
+              left: 16,
+              bottom: 16,
+              child: _StatusChip(
+                label: _executionStatusLabel(
+                  executionSignals.workflowState.value,
+                  context.l10n,
+                ),
+                value: executionSignals.isRunning.value
+                    ? '${executionSignals.completedCount.value}/'
+                          '${executionSignals.totalCount.value}'
+                    : state.graphSummary.value,
+                color: _statusColor(executionSignals.workflowState.value),
+              ),
             ),
-          ),
-          const Positioned(
-            bottom: 16,
-            left: 0,
-            right: 0,
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: _RunTimerOverlay(),
+            const Positioned(
+              bottom: 16,
+              left: 0,
+              right: 0,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: _RunTimerOverlay(),
+              ),
             ),
-          ),
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: _CanvasControls(
-              zoom: zoom,
-              onZoomOut: () => state.setZoom(zoom - 0.1),
-              onZoomIn: () => state.setZoom(zoom + 0.1),
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: _CanvasControls(
+                zoom: zoom,
+                onZoomOut: () => state.setZoom(zoom - 0.1),
+                onZoomIn: () => state.setZoom(zoom + 0.1),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1228,8 +1380,9 @@ class _RunTimerOverlay extends SignalWidget {
     // Build nothing when idle so no infinite spinner animation lingers.
     if (!running) return const SizedBox.shrink();
 
-    final elapsed = executionSignals
-        .workflowElapsedAt(executionSignals.nowTick.value);
+    final elapsed = executionSignals.workflowElapsedAt(
+      executionSignals.nowTick.value,
+    );
     final seconds = elapsed == null
         ? '0.0s'
         : '${(elapsed.inMilliseconds / 1000).toStringAsFixed(1)}s';
@@ -1526,7 +1679,11 @@ class _StatusChip extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               '$label - $value',
-              style: CainTokens.mono(11.5, color: CainTokens.inkDim, spacing: 0.4),
+              style: CainTokens.mono(
+                11.5,
+                color: CainTokens.inkDim,
+                spacing: 0.4,
+              ),
             ),
           ],
         ),
@@ -1546,7 +1703,10 @@ Color _statusColor(WorkflowExecutionState state) {
   };
 }
 
-String _executionStatusLabel(WorkflowExecutionState state, AppLocalizations l10n) {
+String _executionStatusLabel(
+  WorkflowExecutionState state,
+  AppLocalizations l10n,
+) {
   return switch (state) {
     WorkflowExecutionState.idle => l10n.statusReady,
     WorkflowExecutionState.running => l10n.statusRunning,
@@ -1576,7 +1736,9 @@ class _NodeStatusLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final snap = snapshot;
-    final label = snap == null ? context.l10n.statePending : _nodeStateLabel(snap.state, context.l10n);
+    final label = snap == null
+        ? context.l10n.statePending
+        : _nodeStateLabel(snap.state, context.l10n);
     final color = switch (snap?.state) {
       NodeRunState.failed => theme.colorScheme.error,
       NodeRunState.completed => Colors.green,
@@ -1586,8 +1748,12 @@ class _NodeStatusLine extends StatelessWidget {
     final durationText = duration == null
         ? null
         : (snap!.state == NodeRunState.running
-            ? context.l10n.runningDuration((duration.inMilliseconds / 1000).toStringAsFixed(1))
-            : context.l10n.elapsedDuration((duration.inMilliseconds / 1000).toStringAsFixed(2)));
+              ? context.l10n.runningDuration(
+                  (duration.inMilliseconds / 1000).toStringAsFixed(1),
+                )
+              : context.l10n.elapsedDuration(
+                  (duration.inMilliseconds / 1000).toStringAsFixed(2),
+                ));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1596,7 +1762,10 @@ class _NodeStatusLine extends StatelessWidget {
           children: [
             Icon(Icons.circle, size: 10, color: color),
             const SizedBox(width: 8),
-            Text(context.l10n.statusLabel(label), style: theme.textTheme.bodyMedium),
+            Text(
+              context.l10n.statusLabel(label),
+              style: theme.textTheme.bodyMedium,
+            ),
           ],
         ),
         if (durationText != null) ...[
@@ -1663,14 +1832,15 @@ class _WorkbenchGridPainter extends CustomPainter {
 
     // Subtle phosphor vignette from the bottom-left, like a CRT corner glow.
     final glow = Paint()
-      ..shader = RadialGradient(
-        colors: [CainTokens.phosphorGlow, Colors.transparent],
-      ).createShader(
-        Rect.fromCircle(
-          center: Offset(size.width * 0.18, size.height * 0.92),
-          radius: size.shortestSide * 0.7,
-        ),
-      );
+      ..shader =
+          RadialGradient(
+            colors: [CainTokens.phosphorGlow, Colors.transparent],
+          ).createShader(
+            Rect.fromCircle(
+              center: Offset(size.width * 0.18, size.height * 0.92),
+              radius: size.shortestSide * 0.7,
+            ),
+          );
     canvas.drawRect(Offset.zero & size, glow);
   }
 

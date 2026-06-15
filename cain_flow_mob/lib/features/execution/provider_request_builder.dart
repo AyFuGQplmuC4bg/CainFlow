@@ -41,15 +41,15 @@ abstract final class ProviderRequestBuilder {
         referenceImages: referenceImages,
       ),
       // Async-image providers have no chat path; use the OpenAI-compatible shape.
-      ModelProtocol.openai || ModelProtocol.newApiImageAsync =>
-        _buildOpenAiChatRequest(
-          provider: provider,
-          model: model,
-          prompt: prompt,
-          systemPrompt: systemPrompt,
-          customParams: customParams,
-          referenceImages: referenceImages,
-        ),
+      ModelProtocol.openai ||
+      ModelProtocol.newApiImageAsync => _buildOpenAiChatRequest(
+        provider: provider,
+        model: model,
+        prompt: prompt,
+        systemPrompt: systemPrompt,
+        customParams: customParams,
+        referenceImages: referenceImages,
+      ),
     };
   }
 
@@ -59,8 +59,12 @@ abstract final class ProviderRequestBuilder {
     required String prompt,
     String size = '',
     String quality = '',
+    String moderation = '',
+    String background = '',
+    int generationCount = 1,
     Map<String, dynamic> customParams = const {},
     List<String> referenceImages = const [],
+    String maskImage = '',
   }) {
     return switch (model.protocol) {
       ModelProtocol.google => _buildGoogleImageRequest(
@@ -70,16 +74,20 @@ abstract final class ProviderRequestBuilder {
         customParams: customParams,
         referenceImages: referenceImages,
       ),
-      ModelProtocol.openai || ModelProtocol.newApiImageAsync =>
-        _buildOpenAiImageRequest(
-          provider: provider,
-          model: model,
-          prompt: prompt,
-          size: size,
-          quality: quality,
-          customParams: customParams,
-          referenceImages: referenceImages,
-        ),
+      ModelProtocol.openai ||
+      ModelProtocol.newApiImageAsync => _buildOpenAiImageRequest(
+        provider: provider,
+        model: model,
+        prompt: prompt,
+        size: size,
+        quality: quality,
+        moderation: moderation,
+        background: background,
+        generationCount: generationCount,
+        customParams: customParams,
+        referenceImages: referenceImages,
+        maskImage: maskImage,
+      ),
     };
   }
 }
@@ -123,21 +131,35 @@ ProviderRequest _buildOpenAiImageRequest({
   required String prompt,
   required String size,
   required String quality,
+  required String moderation,
+  required String background,
+  required int generationCount,
   required Map<String, dynamic> customParams,
   List<String> referenceImages = const [],
+  String maskImage = '',
 }) {
+  final useEdits = referenceImages.isNotEmpty || maskImage.trim().isNotEmpty;
   final body = <String, dynamic>{
     'model': model.modelId,
     'prompt': prompt,
-    'n': 1,
-    if (referenceImages.isNotEmpty) 'image_urls': referenceImages,
+    'n': generationCount < 1 ? 1 : generationCount,
+    if (referenceImages.isNotEmpty)
+      ...(useEdits
+          ? {'reference_images': referenceImages}
+          : {'image_urls': referenceImages}),
     ...customParams,
   };
   if (_isOpenAiImageSize(size)) body['size'] = size;
   if (_isOpenAiImageQuality(quality)) body['quality'] = quality;
+  if (_isOpenAiImageModeration(moderation)) body['moderation'] = moderation;
+  if (_isOpenAiImageBackground(background)) body['background'] = background;
+  if (maskImage.trim().isNotEmpty) body['mask'] = maskImage.trim();
 
   return ProviderRequest(
-    url: _resolveOpenAiUrl(provider, '/images/generations'),
+    url: _resolveOpenAiUrl(
+      provider,
+      useEdits ? '/images/edits' : '/images/generations',
+    ),
     method: 'POST',
     headers: _openAiHeaders(provider),
     body: body,
@@ -212,7 +234,9 @@ ProviderRequest _buildGoogleImageRequest({
 List<Map<String, dynamic>> _googleImageParts(List<String> referenceImages) {
   final parts = <Map<String, dynamic>>[];
   for (final image in referenceImages) {
-    final match = RegExp(r'^data:([^;]+);base64,(.*)$').firstMatch(image.trim());
+    final match = RegExp(
+      r'^data:([^;]+);base64,(.*)$',
+    ).firstMatch(image.trim());
     if (match != null) {
       parts.add({
         'inlineData': {'mimeType': match.group(1), 'data': match.group(2)},
@@ -309,4 +333,16 @@ bool _isOpenAiImageSize(String value) {
 bool _isOpenAiImageQuality(String value) {
   final normalized = value.trim().toLowerCase();
   return normalized == 'low' || normalized == 'medium' || normalized == 'high';
+}
+
+bool _isOpenAiImageModeration(String value) {
+  final normalized = value.trim().toLowerCase();
+  return normalized == 'auto' || normalized == 'low';
+}
+
+bool _isOpenAiImageBackground(String value) {
+  final normalized = value.trim().toLowerCase();
+  return normalized == 'auto' ||
+      normalized == 'transparent' ||
+      normalized == 'opaque';
 }

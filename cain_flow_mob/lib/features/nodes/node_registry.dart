@@ -92,8 +92,21 @@ const nodeRegistry = NodeRegistry([
     description: 'Generate images from text and optional references.',
     inputPorts: [
       NodePortDefinition(name: 'prompt', type: 'text', label: 'Prompt'),
+      NodePortDefinition(
+        name: 'system_prompt',
+        type: 'text',
+        label: 'System prompt',
+      ),
+      NodePortDefinition(
+        name: 'camera_prompt',
+        type: 'text',
+        label: 'Camera prompt',
+      ),
       NodePortDefinition(name: 'image_1', type: 'image', label: 'Ref 1'),
       NodePortDefinition(name: 'image_2', type: 'image', label: 'Ref 2'),
+      NodePortDefinition(name: 'image_3', type: 'image', label: 'Ref 3'),
+      NodePortDefinition(name: 'image_4', type: 'image', label: 'Ref 4'),
+      NodePortDefinition(name: 'image_5', type: 'image', label: 'Ref 5'),
       NodePortDefinition(name: 'mask', type: 'image', label: 'Mask'),
     ],
     outputPorts: [
@@ -110,7 +123,24 @@ const nodeRegistry = NodeRegistry([
         name: 'size',
         label: 'Size',
         control: NodeParamControl.select,
-        options: ['', '512x512', '1024x1024', '1024x1536', '1536x1024'],
+        options: [
+          '',
+          '1024x1024',
+          '1024x768',
+          '768x1024',
+          '1536x1024',
+          '1024x1536',
+          '2048x2048',
+          '2048x1536',
+          '1536x2048',
+          '2048x1152',
+          '1152x2048',
+          '2880x2880',
+          '3072x2304',
+          '2304x3072',
+          '3840x2160',
+          '2160x3840',
+        ],
         defaultValue: '',
       ),
       NodeParamDefinition(
@@ -118,6 +148,38 @@ const nodeRegistry = NodeRegistry([
         label: 'Quality',
         control: NodeParamControl.select,
         options: ['', 'low', 'medium', 'high'],
+        defaultValue: '',
+      ),
+      NodeParamDefinition(
+        name: 'moderation',
+        label: 'Moderation',
+        control: NodeParamControl.select,
+        options: ['', 'auto', 'low'],
+        defaultValue: '',
+      ),
+      NodeParamDefinition(
+        name: 'background',
+        label: 'Background',
+        control: NodeParamControl.select,
+        options: ['', 'auto', 'transparent', 'opaque'],
+        defaultValue: '',
+      ),
+      NodeParamDefinition(
+        name: 'generationCount',
+        label: 'Count',
+        control: NodeParamControl.number,
+        defaultValue: 1,
+      ),
+      NodeParamDefinition(
+        name: 'systemPrompt',
+        label: 'System prompt',
+        control: NodeParamControl.multiline,
+        defaultValue: '',
+      ),
+      NodeParamDefinition(
+        name: 'cameraPrompt',
+        label: 'Camera prompt',
+        control: NodeParamControl.multiline,
         defaultValue: '',
       ),
       NodeParamDefinition(
@@ -180,9 +242,7 @@ const nodeRegistry = NodeRegistry([
     type: 'TextSplit',
     title: 'Text Split',
     description: 'Split text into up to three parts by a separator.',
-    inputPorts: [
-      NodePortDefinition(name: 'text', type: 'text', label: 'Text'),
-    ],
+    inputPorts: [NodePortDefinition(name: 'text', type: 'text', label: 'Text')],
     outputPorts: [
       NodePortDefinition(name: 'part_1', type: 'text', label: 'Part 1'),
       NodePortDefinition(name: 'part_2', type: 'text', label: 'Part 2'),
@@ -274,10 +334,30 @@ const nodeRegistry = NodeRegistry([
       NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
     ],
     params: [
-      NodeParamDefinition(name: 'x', label: 'X', control: NodeParamControl.number, defaultValue: 0),
-      NodeParamDefinition(name: 'y', label: 'Y', control: NodeParamControl.number, defaultValue: 0),
-      NodeParamDefinition(name: 'width', label: 'Width', control: NodeParamControl.number, defaultValue: 256),
-      NodeParamDefinition(name: 'height', label: 'Height', control: NodeParamControl.number, defaultValue: 256),
+      NodeParamDefinition(
+        name: 'x',
+        label: 'X',
+        control: NodeParamControl.number,
+        defaultValue: 0,
+      ),
+      NodeParamDefinition(
+        name: 'y',
+        label: 'Y',
+        control: NodeParamControl.number,
+        defaultValue: 0,
+      ),
+      NodeParamDefinition(
+        name: 'width',
+        label: 'Width',
+        control: NodeParamControl.number,
+        defaultValue: 256,
+      ),
+      NodeParamDefinition(
+        name: 'height',
+        label: 'Height',
+        control: NodeParamControl.number,
+        defaultValue: 256,
+      ),
     ],
   ),
   NodeDefinition(
@@ -302,7 +382,8 @@ const nodeRegistry = NodeRegistry([
   NodeDefinition(
     type: 'CameraControl',
     title: 'Camera Control',
-    description: 'Viewpoint control: pitch/yaw/distance/FOV/roll → camera prompt.',
+    description:
+        'Viewpoint control: pitch/yaw/distance/FOV/roll → camera prompt.',
     inputPorts: [
       NodePortDefinition(name: 'image', type: 'image', label: 'Reference'),
     ],

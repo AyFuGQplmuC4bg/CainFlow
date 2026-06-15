@@ -16,6 +16,8 @@ abstract final class AsyncImageProtocol {
     required String prompt,
     String size = '',
     Map<String, dynamic> customParams = const {},
+    List<String> referenceImages = const [],
+    String? maskImage,
   }) {
     final body = <String, dynamic>{
       'model': model.modelId,
@@ -23,6 +25,10 @@ abstract final class AsyncImageProtocol {
       ...customParams,
     };
     if (size.isNotEmpty) body['size'] = size;
+    if (referenceImages.isNotEmpty) body['image_urls'] = referenceImages;
+    if (maskImage != null && maskImage.trim().isNotEmpty) {
+      body['mask'] = maskImage.trim();
+    }
 
     return ProviderRequest(
       url: _submitUrl(provider),
@@ -92,8 +98,7 @@ abstract final class AsyncImageProtocol {
     if (base.contains('/images/') || base.contains('/generations')) {
       return base;
     }
-    final withVersion =
-        RegExp(r'/v\d+$').hasMatch(base) ? base : '$base/v1';
+    final withVersion = RegExp(r'/v\d+$').hasMatch(base) ? base : '$base/v1';
     return '$withVersion/images/generations';
   }
 
@@ -115,7 +120,13 @@ abstract final class AsyncImageProtocol {
 
 enum AsyncImageStatus { pending, completed, failed }
 
-const _completedStates = {'completed', 'succeeded', 'success', 'done', 'finished'};
+const _completedStates = {
+  'completed',
+  'succeeded',
+  'success',
+  'done',
+  'finished',
+};
 const _failedStates = {'failed', 'error', 'canceled', 'cancelled'};
 
 String _firstString(List<Object?> candidates) {

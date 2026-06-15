@@ -36,6 +36,17 @@ class NodeImageThumbnail extends StatelessWidget {
   Widget _buildThumb(BuildContext context) {
     final kind = payload['kind']?.toString();
 
+    if (kind == 'images') {
+      final items = payload['items'];
+      if (items is List && items.isNotEmpty && items.last is Map) {
+        return NodeImageThumbnail(
+          payload: Map<String, dynamic>.from(items.last as Map),
+          size: size,
+        );
+      }
+      return _placeholder(context);
+    }
+
     if (kind == 'url') {
       final url = payload['url']?.toString() ?? '';
       if (url.isEmpty) return _placeholder(context);
@@ -51,8 +62,8 @@ class NodeImageThumbnail extends StatelessWidget {
 
     if (kind == 'asset') {
       // Prefer the generated thumbnail; fall back to the full asset.
-      final relativePath = (payload['thumbnailRelativePath']?.toString() ?? '')
-              .isNotEmpty
+      final relativePath =
+          (payload['thumbnailRelativePath']?.toString() ?? '').isNotEmpty
           ? payload['thumbnailRelativePath'].toString()
           : payload['relativePath']?.toString() ?? '';
       if (relativePath.isEmpty) return _placeholder(context);
