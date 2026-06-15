@@ -29,8 +29,8 @@ class BackgroundAsyncTaskMetadata {
       requestToken: json['requestToken']?.toString() ?? '',
       nodeId: json['nodeId']?.toString() ?? '',
       pollAttempts: _intFrom(json['pollAttempts']),
-      nextPollAt: _dateTimeFrom(json['nextPollAt']),
-      deadlineAt: _dateTimeFrom(json['deadlineAt']),
+      nextPollAt: json['nextPollAt']?.toString(),
+      deadlineAt: json['deadlineAt']?.toString(),
       lastError: json['lastError']?.toString(),
     );
   }
@@ -42,8 +42,8 @@ class BackgroundAsyncTaskMetadata {
   final String requestToken;
   final String nodeId;
   final int pollAttempts;
-  final DateTime? nextPollAt;
-  final DateTime? deadlineAt;
+  final String? nextPollAt;
+  final String? deadlineAt;
   final String? lastError;
 
   BackgroundAsyncTaskMetadata copyWith({
@@ -54,8 +54,8 @@ class BackgroundAsyncTaskMetadata {
     String? requestToken,
     String? nodeId,
     int? pollAttempts,
-    DateTime? nextPollAt,
-    DateTime? deadlineAt,
+    String? nextPollAt,
+    String? deadlineAt,
     String? lastError,
   }) {
     return BackgroundAsyncTaskMetadata(
@@ -81,8 +81,8 @@ class BackgroundAsyncTaskMetadata {
       if (requestToken.isNotEmpty) 'requestToken': requestToken,
       if (nodeId.isNotEmpty) 'nodeId': nodeId,
       if (pollAttempts > 0) 'pollAttempts': pollAttempts,
-      if (nextPollAt != null) 'nextPollAt': nextPollAt!.toUtc().toIso8601String(),
-      if (deadlineAt != null) 'deadlineAt': deadlineAt!.toUtc().toIso8601String(),
+      if (nextPollAt != null) 'nextPollAt': nextPollAt,
+      if (deadlineAt != null) 'deadlineAt': deadlineAt,
       if (lastError != null && lastError!.isNotEmpty) 'lastError': lastError,
     };
   }
@@ -101,19 +101,24 @@ class BackgroundJobSnapshot {
     List<BackgroundAsyncTaskMetadata>? asyncTasks,
     this.error = '',
   }) : asyncTasks = asyncTasks ?? (asyncTask == null ? const [] : [asyncTask]),
-       asyncTask =
-           asyncTask ??
-           ((asyncTasks != null && asyncTasks.isNotEmpty) ? asyncTasks.first : null);
+       asyncTask = asyncTask ??
+           ((asyncTasks != null && asyncTasks.isNotEmpty)
+               ? asyncTasks.first
+               : null);
 
   factory BackgroundJobSnapshot.fromJson(Map<String, dynamic> json) {
     final parsedTasks = _parseAsyncTasks(json);
     return BackgroundJobSnapshot(
       jobId: json['jobId']?.toString() ?? '',
-      workflow: _workflowFrom(json['workflow']),
+      workflow: json['workflow'] is Map
+          ? WorkflowDocument.fromJson(
+              Map<String, dynamic>.from(json['workflow'] as Map),
+            )
+          : WorkflowDocument.empty(),
       status: _statusFrom(json['status']),
-      createdAt: _dateTimeFrom(json['createdAt']) ??
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-      updatedAt: _dateTimeFrom(json['updatedAt']) ??
+      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       asyncTasks: parsedTasks,
       error: json['error']?.toString() ?? '',
@@ -196,7 +201,7 @@ class BackgroundJobRepository {
 
   BackgroundJobSnapshot? load(String jobId) => loadJob(jobId);
 
-  List<BackgroundJobSnapshot> loadAllJobs() {
+  List<BackgroundJobSnapshot> loadAll() {
     final ids = _loadIds();
     return [
       for (final id in ids)
@@ -204,7 +209,7 @@ class BackgroundJobRepository {
     ];
   }
 
-  List<BackgroundJobSnapshot> loadAll() => loadAllJobs();
+  List<BackgroundJobSnapshot> loadAllJobs() => loadAll();
 
   bool saveJob(BackgroundJobSnapshot snapshot) {
     if (snapshot.jobId.trim().isEmpty) return false;
@@ -224,13 +229,11 @@ class BackgroundJobRepository {
 
   bool save(BackgroundJobSnapshot snapshot) => saveJob(snapshot);
 
-  void deleteJob(String jobId) {
+  void remove(String jobId) {
     store.remove(StorageKeys.backgroundJob(jobId));
     final ids = _loadIds()..remove(jobId);
     _saveIds(ids);
   }
-
-  void remove(String jobId) => deleteJob(jobId);
 
   List<String> _loadIds() {
     final raw = store.getString(StorageKeys.backgroundJobIndex);
@@ -238,7 +241,10 @@ class BackgroundJobRepository {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return <String>[];
-      return decoded.map((item) => item.toString()).where((id) => id.isNotEmpty).toList();
+      return decoded
+          .map((item) => item.toString())
+          .where((id) => id.isNotEmpty)
+          .toList();
     } catch (_) {
       return <String>[];
     }
@@ -247,13 +253,6 @@ class BackgroundJobRepository {
   bool _saveIds(List<String> ids) {
     return store.setString(StorageKeys.backgroundJobIndex, jsonEncode(ids));
   }
-}
-
-WorkflowDocument _workflowFrom(Object? value) {
-  if (value is Map) {
-    return WorkflowDocument.fromJson(Map<String, dynamic>.from(value));
-  }
-  return WorkflowDocument.empty();
 }
 
 List<BackgroundAsyncTaskMetadata> _parseAsyncTasks(Map<String, dynamic> json) {
@@ -275,11 +274,6 @@ List<BackgroundAsyncTaskMetadata> _parseAsyncTasks(Map<String, dynamic> json) {
     return task.taskId.isEmpty ? const [] : [task];
   }
   return const [];
-}
-
-DateTime? _dateTimeFrom(Object? value) {
-  final parsed = DateTime.tryParse(value?.toString() ?? '');
-  return parsed?.toUtc();
 }
 
 int _intFrom(Object? value) {
