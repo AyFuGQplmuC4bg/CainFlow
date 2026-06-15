@@ -189,10 +189,7 @@ void main() {
         },
       );
 
-      await harness.executor.execute(
-        node,
-        _context(inputs: {'prompt': 'hi'}),
-      );
+      await harness.executor.execute(node, _context(inputs: {'prompt': 'hi'}));
 
       final body = harness.client.requests.single.body;
       final messages = body['messages'] as List;
@@ -201,34 +198,42 @@ void main() {
       expect(body['stream'], false);
     });
 
-    test('injects a url reference image as a multimodal content part',        () async {
-      final harness = ExecutorHarness(
-        settings: chatSettings(),
-        responses: const [
-          FakeResponse(200, '{"choices":[{"message":{"content":"ok"}}]}'),
-        ],
-      );
-      final node = const FlowNode(id: 'c', type: 'TextChat', x: 0, y: 0);
+    test(
+      'injects a url reference image as a multimodal content part',
+      () async {
+        final harness = ExecutorHarness(
+          settings: chatSettings(),
+          responses: const [
+            FakeResponse(200, '{"choices":[{"message":{"content":"ok"}}]}'),
+          ],
+        );
+        final node = const FlowNode(id: 'c', type: 'TextChat', x: 0, y: 0);
 
-      await harness.executor.execute(
-        node,
-        _context(inputs: {
-          'prompt': 'describe',
-          'image_1': {'kind': 'url', 'url': 'https://cdn/x.png'},
-        }),
-      );
+        await harness.executor.execute(
+          node,
+          _context(
+            inputs: {
+              'prompt': 'describe',
+              'image_1': {'kind': 'url', 'url': 'https://cdn/x.png'},
+            },
+          ),
+        );
 
-      final messages = harness.client.requests.single.body['messages'] as List;
-      final userContent = (messages.last as Map)['content'] as List;
-      expect(userContent.first, {'type': 'text', 'text': 'describe'});
-      expect(
-        userContent.any((p) =>
-            p is Map &&
-            p['type'] == 'image_url' &&
-            (p['image_url'] as Map)['url'] == 'https://cdn/x.png'),
-        isTrue,
-      );
-    });
+        final messages =
+            harness.client.requests.single.body['messages'] as List;
+        final userContent = (messages.last as Map)['content'] as List;
+        expect(userContent.first, {'type': 'text', 'text': 'describe'});
+        expect(
+          userContent.any(
+            (p) =>
+                p is Map &&
+                p['type'] == 'image_url' &&
+                (p['image_url'] as Map)['url'] == 'https://cdn/x.png',
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('accumulates an SSE streaming response into the final text', () async {
       final harness = ExecutorHarness(
@@ -290,15 +295,13 @@ void main() {
       final harness = ExecutorHarness(
         settings: imageSettings(),
         responses: const [
-          FakeResponse(200, '{"data":[{"url":"https://cdn.example.com/a.png"}]}'),
+          FakeResponse(
+            200,
+            '{"data":[{"url":"https://cdn.example.com/a.png"}]}',
+          ),
         ],
       );
-      final node = const FlowNode(
-        id: 'gen',
-        type: 'ImageGenerate',
-        x: 0,
-        y: 0,
-      );
+      final node = const FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0);
 
       final result = await harness.executor.execute(
         node,
@@ -317,12 +320,7 @@ void main() {
           FakeResponse(200, '{"data":[{"b64_json":"$_tinyPngBase64"}]}'),
         ],
       );
-      final node = const FlowNode(
-        id: 'gen',
-        type: 'ImageGenerate',
-        x: 0,
-        y: 0,
-      );
+      final node = const FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0);
 
       final result = await harness.executor.execute(
         node,
@@ -333,6 +331,93 @@ void main() {
       expect(image['kind'], 'asset');
       expect(image['assetId'], isNotEmpty);
       expect(harness.mediaRepository.loadAll().single.id, image['assetId']);
+    });
+
+    test('combines system and camera prompts into the image prompt', () async {
+      final harness = ExecutorHarness(
+        settings: imageSettings(),
+        responses: const [
+          FakeResponse(
+            200,
+            '{"data":[{"url":"https://cdn.example.com/a.png"}]}',
+          ),
+        ],
+      );
+      final node = const FlowNode(
+        id: 'gen',
+        type: 'ImageGenerate',
+        x: 0,
+        y: 0,
+        data: {
+          'systemPrompt': 'keep it minimal',
+          'cameraPrompt': 'three-quarter product shot',
+        },
+      );
+
+      await harness.executor.execute(
+        node,
+        _context(inputs: {'prompt': 'a desk lamp'}),
+      );
+
+      expect(
+        harness.client.requests.single.body['prompt'],
+        'a desk lamp\n\n'
+        'System instruction:\nkeep it minimal\n\n'
+        'Camera composition instruction:\nthree-quarter product shot',
+      );
+    });
+
+    test('sends reference images, mask, and generation count', () async {
+      final harness = ExecutorHarness(
+        settings: imageSettings(),
+        responses: const [
+          FakeResponse(
+            200,
+            '{"data":[{"url":"https://cdn.example.com/a.png"},{"url":"https://cdn.example.com/b.png"}]}',
+          ),
+        ],
+      );
+      final node = const FlowNode(
+        id: 'gen',
+        type: 'ImageGenerate',
+        x: 0,
+        y: 0,
+        data: {
+          'generationCount': 2,
+          'moderation': 'auto',
+          'background': 'transparent',
+        },
+      );
+
+      final result = await harness.executor.execute(
+        node,
+        _context(
+          inputs: {
+            'prompt': 'a cat',
+            'image_1': {
+              'kind': 'url',
+              'url': 'https://cdn.example.com/ref.png',
+            },
+            'mask': {'kind': 'url', 'url': 'https://cdn.example.com/mask.png'},
+          },
+        ),
+      );
+
+      final body = harness.client.requests.single.body;
+      expect(
+        harness.client.requests.single.url,
+        'https://api.example.com/v1/images/edits',
+      );
+      expect(body['reference_images'], ['https://cdn.example.com/ref.png']);
+      expect(body['mask'], 'https://cdn.example.com/mask.png');
+      expect(body['n'], 2);
+      expect(body['moderation'], 'auto');
+      expect(body['background'], 'transparent');
+
+      final image = result.outputs['image'] as Map;
+      expect(image['kind'], 'images');
+      expect(image['count'], 2);
+      expect((image['items'] as List).length, 2);
     });
   });
 
@@ -366,37 +451,39 @@ void main() {
       );
     }
 
-    test('submits, polls until completed, and returns the result URL',
-        () async {
-      final harness = ExecutorHarness(
-        settings: asyncSettings(),
-        responses: const [
-          FakeResponse(200, '{"id":"task-1"}'), // submit
-          FakeResponse(200, '{"status":"pending"}'), // poll 1
-          FakeResponse(
-            200,
-            '{"status":"completed","data":{"image_url":"https://cdn/x.png"}}',
-          ), // poll 2
-        ],
-      );
-      final node = const FlowNode(
-        id: 'gen',
-        type: 'ImageGenerate',
-        x: 0,
-        y: 0,
-      );
+    test(
+      'submits, polls until completed, and returns the result URL',
+      () async {
+        final harness = ExecutorHarness(
+          settings: asyncSettings(),
+          responses: const [
+            FakeResponse(200, '{"id":"task-1"}'), // submit
+            FakeResponse(200, '{"status":"pending"}'), // poll 1
+            FakeResponse(
+              200,
+              '{"status":"completed","data":{"image_url":"https://cdn/x.png"}}',
+            ), // poll 2
+          ],
+        );
+        final node = const FlowNode(
+          id: 'gen',
+          type: 'ImageGenerate',
+          x: 0,
+          y: 0,
+        );
 
-      final result = await harness.executor.execute(
-        node,
-        _context(inputs: {'prompt': 'a city'}),
-      );
+        final result = await harness.executor.execute(
+          node,
+          _context(inputs: {'prompt': 'a city'}),
+        );
 
-      final image = result.outputs['image'] as Map;
-      expect(image['kind'], 'url');
-      expect(image['url'], 'https://cdn/x.png');
-      // 1 submit + 2 polls.
-      expect(harness.client.requests.length, 3);
-    });
+        final image = result.outputs['image'] as Map;
+        expect(image['kind'], 'url');
+        expect(image['url'], 'https://cdn/x.png');
+        // 1 submit + 2 polls.
+        expect(harness.client.requests.length, 3);
+      },
+    );
 
     test('throws when the task reports failure', () async {
       final harness = ExecutorHarness(
@@ -443,7 +530,8 @@ void main() {
     });
   });
 
-  group('ImageImport node', () {    test('resolves a stored asset id into a passthrough payload', () async {
+  group('ImageImport node', () {
+    test('resolves a stored asset id into a passthrough payload', () async {
       final harness = ExecutorHarness();
       final asset = await harness.mediaRepository.saveBytes(
         workflowId: 'wf-test',
@@ -498,7 +586,8 @@ void main() {
     });
   });
 
-  group('ImageSave node', () {    test('passes through an existing local asset payload', () async {
+  group('ImageSave node', () {
+    test('passes through an existing local asset payload', () async {
       final harness = ExecutorHarness();
       final node = const FlowNode(id: 'save', type: 'ImageSave', x: 0, y: 0);
       final assetPayload = {
@@ -520,7 +609,10 @@ void main() {
     test('keeps URL metadata without downloading', () async {
       final harness = ExecutorHarness();
       final node = const FlowNode(id: 'save', type: 'ImageSave', x: 0, y: 0);
-      final urlPayload = {'kind': 'url', 'url': 'https://cdn.example.com/a.png'};
+      final urlPayload = {
+        'kind': 'url',
+        'url': 'https://cdn.example.com/a.png',
+      };
 
       final result = await harness.executor.execute(
         node,
@@ -536,9 +628,11 @@ void main() {
 
       final result = await harness.executor.execute(
         node,
-        _context(inputs: {
-          'image': {'b64_json': _tinyPngBase64, 'mimeType': 'image/png'},
-        }),
+        _context(
+          inputs: {
+            'image': {'b64_json': _tinyPngBase64, 'mimeType': 'image/png'},
+          },
+        ),
       );
 
       final image = result.outputs['image'] as Map;
@@ -547,9 +641,7 @@ void main() {
     });
 
     test('downloads a remote URL to a local asset when opted in', () async {
-      final harness = ExecutorHarness(
-        downloader: _FakeDownloader(),
-      );
+      final harness = ExecutorHarness(downloader: _FakeDownloader());
       final node = const FlowNode(
         id: 'save',
         type: 'ImageSave',
@@ -560,9 +652,11 @@ void main() {
 
       final result = await harness.executor.execute(
         node,
-        _context(inputs: {
-          'image': {'kind': 'url', 'url': 'https://cdn/remote.png'},
-        }),
+        _context(
+          inputs: {
+            'image': {'kind': 'url', 'url': 'https://cdn/remote.png'},
+          },
+        ),
       );
 
       final image = result.outputs['image'] as Map;
@@ -576,9 +670,11 @@ void main() {
 
       final result = await harness.executor.execute(
         node,
-        _context(inputs: {
-          'image': {'kind': 'url', 'url': 'https://cdn/remote.png'},
-        }),
+        _context(
+          inputs: {
+            'image': {'kind': 'url', 'url': 'https://cdn/remote.png'},
+          },
+        ),
       );
 
       expect((result.outputs['image'] as Map)['kind'], 'url');
@@ -658,7 +754,10 @@ class FakeProviderClient implements ProviderClient {
     requests.add(request);
     final response = _responses[_index.clamp(0, _responses.length - 1)];
     if (_index < _responses.length - 1) _index += 1;
-    return ProviderResponse(statusCode: response.statusCode, body: response.body);
+    return ProviderResponse(
+      statusCode: response.statusCode,
+      body: response.body,
+    );
   }
 }
 

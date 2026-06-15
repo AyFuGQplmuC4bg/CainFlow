@@ -1,35 +1,39 @@
 import 'package:cain_flow_mob/core/models/flow_node.dart';
 import 'package:cain_flow_mob/features/execution/node_executor.dart';
 import 'package:cain_flow_mob/features/logs/log_signals.dart';
+import 'package:cain_flow_mob/features/settings/provider_settings.dart';
 import 'package:cain_flow_mob/features/workbench/completion_feedback.dart';
 import 'package:cain_flow_mob/features/workbench/workbench_execution_controller.dart';
 import 'package:cain_flow_mob/features/workbench/workbench_signals.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Run drives the runner and returns workbench to idle on success', () async {
-    final workbench = WorkbenchSignals();
-    final logs = LogSignals();
-    final feedback = _SpyFeedback();
-    final controller = WorkbenchExecutionController(
-      workbench: workbench,
-      executor: _PassthroughExecutor(),
-      logs: logs,
-      feedback: feedback,
-    );
+  test(
+    'Run drives the runner and returns workbench to idle on success',
+    () async {
+      final workbench = WorkbenchSignals();
+      final logs = LogSignals();
+      final feedback = _SpyFeedback();
+      final controller = WorkbenchExecutionController(
+        workbench: workbench,
+        executor: _PassthroughExecutor(),
+        logs: logs,
+        feedback: feedback,
+      );
 
-    final result = await controller.run();
+      final result = await controller.run();
 
-    expect(result, isNotNull);
-    expect(workbench.runState.value, WorkbenchRunState.idle);
-    expect(controller.isRunning, isFalse);
-    expect(
-      logs.entries.value.any((e) => e.message.contains('completed')),
-      isTrue,
-    );
-    expect(feedback.successCount, 1);
-    expect(feedback.failureCount, 0);
-  });
+      expect(result, isNotNull);
+      expect(workbench.runState.value, WorkbenchRunState.idle);
+      expect(controller.isRunning, isFalse);
+      expect(
+        logs.entries.value.any((e) => e.message.contains('completed')),
+        isTrue,
+      );
+      expect(feedback.successCount, 1);
+      expect(feedback.failureCount, 0);
+    },
+  );
 
   test('Stop cancels an in-flight run and marks workbench stopped', () async {
     final workbench = WorkbenchSignals();
@@ -66,6 +70,27 @@ void main() {
     await first;
 
     expect(second, isNull);
+  });
+
+  test('feedback uses latest sound toggle after controller creation', () async {
+    var runtime = const RuntimeSettings();
+    var soundPlays = 0;
+    final controller = WorkbenchExecutionController(
+      workbench: WorkbenchSignals(),
+      executor: _PassthroughExecutor(),
+      logs: LogSignals(),
+      feedback: CompletionFeedback(
+        soundEnabledProvider: () => runtime.completionSoundEnabled,
+        hapticsEnabledProvider: () => runtime.completionHapticsEnabled,
+        soundPlayer: () async => soundPlays++,
+      ),
+    );
+
+    await controller.run();
+    runtime = runtime.copyWith(completionSoundEnabled: false);
+    await controller.run();
+
+    expect(soundPlays, 1);
   });
 }
 

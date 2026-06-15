@@ -28,8 +28,9 @@ void main() {
     );
   }
 
-  testWidgets('editing a text field writes back through onChanged',
-      (tester) async {
+  testWidgets('editing a text field writes back through onChanged', (
+    tester,
+  ) async {
     Map<String, dynamic>? captured;
     await pump(
       tester,
@@ -50,8 +51,9 @@ void main() {
     expect(captured?['text'], 'hello world');
   });
 
-  testWidgets('model picker lists models filtered by task type',
-      (tester) async {
+  testWidgets('model picker lists models filtered by task type', (
+    tester,
+  ) async {
     Map<String, dynamic>? captured;
     await pump(
       tester,
@@ -111,5 +113,41 @@ void main() {
 
     await tester.tap(find.byTooltip('Delete node'));
     expect(deleted, isTrue);
+  });
+
+  testWidgets('ImageGenerate exposes the aligned mobile parity params', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      node: const WorkbenchNode(
+        id: 'img',
+        type: 'ImageGenerate',
+        title: 'Image Generate',
+        x: 0,
+        y: 0,
+      ),
+      onChanged: (_) {},
+      models: const [
+        ModelConfig(
+          id: 'm-img',
+          name: 'Painter',
+          modelId: 'gpt-image-1',
+          taskType: ModelTaskType.image,
+          protocol: ModelProtocol.openai,
+          providerIds: ['p'],
+        ),
+      ],
+    );
+
+    expect(find.byKey(const ValueKey('param_apiConfigId')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_size')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_quality')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_moderation')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_background')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_generationCount')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_systemPrompt')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_cameraPrompt')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_customParams')), findsOneWidget);
   });
 }

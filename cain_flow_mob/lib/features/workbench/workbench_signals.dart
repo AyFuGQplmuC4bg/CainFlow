@@ -431,7 +431,7 @@ double _numberFrom(Object? value, {double fallback = 0}) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
-double _clampZoom(double value) => value.clamp(0.5, 1.8).toDouble();
+double _clampZoom(double value) => value.clamp(0.01, 1.0).toDouble();
 
 List<Map<String, dynamic>> _listOfMaps(Object? value) {
   if (value is! List) return const [];

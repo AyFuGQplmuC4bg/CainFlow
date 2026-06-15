@@ -86,4 +86,33 @@ void main() {
     expect(request.body['model'], 'gpt-image-2');
     expect(request.body['size'], '1024x1024');
   });
+
+  test('builds OpenAI image edit requests when references are present', () {
+    const imageModel = ModelConfig(
+      id: 'model_image',
+      name: 'Image',
+      modelId: 'gpt-image-2',
+      taskType: ModelTaskType.image,
+      protocol: ModelProtocol.openai,
+      providerIds: ['prov_openai'],
+    );
+
+    final request = ProviderRequestBuilder.buildImageRequest(
+      provider: provider,
+      model: imageModel,
+      prompt: 'A small desk lamp',
+      referenceImages: const ['https://cdn/a.png'],
+      maskImage: 'data:image/png;base64,abc',
+      moderation: 'auto',
+      background: 'transparent',
+      generationCount: 2,
+    );
+
+    expect(request.url, 'https://api.example.com/v1/images/edits');
+    expect(request.body['reference_images'], ['https://cdn/a.png']);
+    expect(request.body['mask'], 'data:image/png;base64,abc');
+    expect(request.body['moderation'], 'auto');
+    expect(request.body['background'], 'transparent');
+    expect(request.body['n'], 2);
+  });
 }

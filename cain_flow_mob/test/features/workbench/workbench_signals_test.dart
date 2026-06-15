@@ -42,9 +42,42 @@ void main() {
   test('updateNodeData replaces the parameter map', () {
     final state = WorkbenchSignals();
     state.updateNodeData('node_text_prompt', {'text': 'hello'});
-    final node =
-        state.nodes.value.firstWhere((n) => n.id == 'node_text_prompt');
+    final node = state.nodes.value.firstWhere(
+      (n) => n.id == 'node_text_prompt',
+    );
     expect(node.data['text'], 'hello');
+  });
+
+  test('zoom around viewport point keeps that canvas point anchored', () {
+    final state = WorkbenchSignals();
+    state.moveCanvas(const NodeOffset(20, -10));
+
+    state.setZoomAroundViewportPoint(0.25, const NodeOffset(200, 150));
+
+    expect(state.zoom.value, 0.25);
+    // The canvas point under viewport (200, 150) before zoom was (180, 160).
+    expect(state.panOffset.value.dx + 180 * state.zoom.value, 200);
+    expect(state.panOffset.value.dy + 160 * state.zoom.value, 150);
+  });
+
+  test('zoom has no 50 percent floor and is capped at 100 percent', () {
+    final state = WorkbenchSignals();
+
+    state.setZoom(0.25);
+    expect(state.zoom.value, 0.25);
+
+    state.setZoom(1.5);
+    expect(state.zoom.value, 1);
+  });
+
+  test('zoom stays positive when asked for zero or less', () {
+    final state = WorkbenchSignals();
+
+    state.setZoom(0);
+    expect(state.zoom.value, 0.01);
+
+    state.setZoom(-1);
+    expect(state.zoom.value, 0.01);
   });
 
   test('toJson omits empty data', () {
@@ -87,8 +120,11 @@ void main() {
       // Existing: text->prompt, image->image. Re-wire prompt from a new Text.
       final newText = state.addNode('Text');
       state.beginConnection(newText, 'text', 'text');
-      final rejection =
-          state.completeConnection('node_image_generate', 'prompt', 'text');
+      final rejection = state.completeConnection(
+        'node_image_generate',
+        'prompt',
+        'text',
+      );
 
       expect(rejection, ConnectionRejection.none);
       final promptEdges = state.connections.value.where(
@@ -102,8 +138,11 @@ void main() {
     test('rejects a type mismatch', () {
       final state = WorkbenchSignals();
       state.beginConnection('node_image_generate', 'image', 'image');
-      final rejection =
-          state.completeConnection('node_image_generate', 'prompt', 'text');
+      final rejection = state.completeConnection(
+        'node_image_generate',
+        'prompt',
+        'text',
+      );
       // self-connection is checked first here; use distinct nodes instead.
       expect(rejection, ConnectionRejection.selfConnection);
     });
@@ -111,8 +150,11 @@ void main() {
     test('rejects connecting a node to itself', () {
       final state = WorkbenchSignals();
       state.beginConnection('node_text_prompt', 'text', 'text');
-      final rejection =
-          state.completeConnection('node_text_prompt', 'prompt', 'text');
+      final rejection = state.completeConnection(
+        'node_text_prompt',
+        'prompt',
+        'text',
+      );
       expect(rejection, ConnectionRejection.selfConnection);
     });
 

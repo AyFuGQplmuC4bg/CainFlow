@@ -11,11 +11,11 @@ void main() {
     hapticCalls = [];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-      if (call.method == 'HapticFeedback.vibrate') {
-        hapticCalls.add(call);
-      }
-      return null;
-    });
+          if (call.method == 'HapticFeedback.vibrate') {
+            hapticCalls.add(call);
+          }
+          return null;
+        });
   });
 
   tearDown(() {
@@ -63,6 +63,22 @@ void main() {
     );
     await feedback.success();
     expect(plays, 0);
+  });
+
+  test('success re-reads sound toggle each time', () async {
+    var enabled = true;
+    var plays = 0;
+    final feedback = CompletionFeedback(
+      soundEnabledProvider: () => enabled,
+      hapticsEnabled: false,
+      soundPlayer: () async => plays++,
+    );
+
+    await feedback.success();
+    enabled = false;
+    await feedback.success();
+
+    expect(plays, 1);
   });
 
   test('failure buzzes but never plays sound', () async {
