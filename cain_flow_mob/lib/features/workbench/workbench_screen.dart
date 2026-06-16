@@ -159,6 +159,7 @@ class WorkbenchScreen extends SignalWidget {
 
   @override
   Widget build(BuildContext context) {
+    workflowManager;
     final isCompact = MediaQuery.of(context).size.width < 860;
     return isCompact ? _buildCompact(context) : _buildWide(context);
   }

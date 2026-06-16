@@ -35,8 +35,12 @@ const double kPortRowHeight = 24;
 /// Inner padding of the card (matches the `EdgeInsets.all` below).
 const double _kCardPadding = 14;
 
+/// Image preview size inside a node card. Keep this in sync with
+/// [_kThumbnailExtra] so port anchors match the rendered card height.
+const double _kNodeThumbnailSize = 76;
+
 /// Extra height added to the thumbnail-bearing cards.
-const double _kThumbnailExtra = 56;
+const double _kThumbnailExtra = _kNodeThumbnailSize + 8;
 
 /// Total rendered height of a node card, shared by [NodeCard] and the
 /// connection painter so anchors line up exactly.
@@ -122,8 +126,10 @@ class NodeCard extends StatelessWidget {
     // Card grows for nodes with more than two stacked ports, plus an optional
     // thumbnail. Height is computed by the shared helper so connection anchors
     // line up exactly with the rendered ports.
-    final cardHeight =
-        nodeCardHeight(definition, hasImage: imagePayload != null);
+    final cardHeight = nodeCardHeight(
+      definition,
+      hasImage: imagePayload != null,
+    );
 
     final runColor = _runStateColor(theme, runState);
     final borderColor = selected
@@ -165,8 +171,9 @@ class NodeCard extends StatelessWidget {
                   )
                 else if (runState == NodeRunState.running)
                   BoxShadow(
-                    color: (runColor ?? CainTokens.phosphor)
-                        .withValues(alpha: 0.45),
+                    color: (runColor ?? CainTokens.phosphor).withValues(
+                      alpha: 0.45,
+                    ),
                     blurRadius: 22,
                   ),
               ],
@@ -249,7 +256,10 @@ class NodeCard extends StatelessWidget {
                           ),
                           if (imagePayload != null) ...[
                             const SizedBox(height: 8),
-                            NodeImageThumbnail(payload: imagePayload!, size: 48),
+                            NodeImageThumbnail(
+                              payload: imagePayload!,
+                              size: _kNodeThumbnailSize,
+                            ),
                           ],
                           const Spacer(),
                           Row(
@@ -335,9 +345,7 @@ class _StatusDot extends StatelessWidget {
       width: 16,
       height: 16,
       decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
-      child: icon == null
-          ? null
-          : Icon(icon, size: 11, color: Colors.white),
+      child: icon == null ? null : Icon(icon, size: 11, color: Colors.white),
     );
   }
 }
@@ -365,8 +373,9 @@ class _PortCluster extends StatelessWidget {
       return SizedBox(
         width: 82,
         child: Row(
-          mainAxisAlignment:
-              reverse ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment: reverse
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
           children: [Text(fallbackLabel)],
         ),
       );
@@ -375,8 +384,9 @@ class _PortCluster extends StatelessWidget {
     return SizedBox(
       width: 90,
       child: Column(
-        crossAxisAlignment:
-            reverse ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: reverse
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           for (final port in ports)
@@ -422,7 +432,12 @@ class _PortRow extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: portColor, width: armed ? 2.5 : 2),
         boxShadow: armed
-            ? [BoxShadow(color: portColor.withValues(alpha: 0.6), blurRadius: 8)]
+            ? [
+                BoxShadow(
+                  color: portColor.withValues(alpha: 0.6),
+                  blurRadius: 8,
+                ),
+              ]
             : null,
       ),
     );
@@ -442,8 +457,9 @@ class _PortRow extends StatelessWidget {
       child: SizedBox(
         height: kPortRowHeight,
         child: Row(
-          mainAxisAlignment:
-              reverse ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment: reverse
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
           children: reverse
               ? [text, const SizedBox(width: 6), dot]
               : [dot, const SizedBox(width: 6), text],
