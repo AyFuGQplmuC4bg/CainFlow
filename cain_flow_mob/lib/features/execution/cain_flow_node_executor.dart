@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../../core/models/flow_node.dart';
 import '../../core/network/provider_client.dart';
+import '../background/background_job_repository.dart';
 import '../camera/camera_prompt.dart';
 import '../logs/log_signals.dart';
 import '../media/image_ops.dart';
@@ -439,6 +440,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       scope: 'TextChat',
       providerName: provider.name,
       modelName: model.modelId,
+      options: _requestOptions(settings.runtime.requestTimeoutSeconds),
     );
     // Streaming responses arrive as SSE; accumulate deltas. The buffered
     // (non-stream) body is parsed normally. We detect SSE by the data: prefix.
@@ -505,6 +507,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       scope: 'ImageGenerate',
       providerName: provider.name,
       modelName: model.modelId,
+      options: _requestOptions(settings.runtime.requestTimeoutSeconds),
     );
     final image = await _parseImage(
       protocol: model.protocol,
@@ -524,62 +527,85 @@ class CainFlowNodeExecutor implements NodeExecutor {
     required ProviderConfig provider,
     required String prompt,
   }) async {
+    final requestOptions = _requestOptions(
+      settings.runtime.requestTimeoutSeconds,
+    );
+    final restoredTask = services.loadAsyncTaskForNode(node.id);
     final imageInputs = await _collectImageInputs(context.inputs);
-    final submit = AsyncImageProtocol.buildSubmitRequest(
-      provider: provider,
-      model: model,
-      prompt: prompt,
-      size: _stringFrom(node.data['size']) ?? '',
-      customParams: _customParamsFrom(node.data['customParams']),
-      referenceImages: imageInputs.referenceImages,
-      maskImage: imageInputs.maskImage,
-    );
-    final submitResponse = await _send(
-      node: node,
-      request: submit,
-      scope: 'ImageGenerate(async)',
-    );
-    final submitJson = _tryDecode(submitResponse.body);
-    if (submitJson == null) {
-      throw StateError('Async submit response was not valid JSON');
-    }
-    final taskId = AsyncImageProtocol.extractTaskId(submitJson);
-    if (taskId.isEmpty) {
-      throw StateError('Async submit did not return a task id');
-    }
-    services.logs.add(
-      LogLevel.info,
-      'Async image task submitted: $taskId',
-      scope: 'ImageGenerate(async)',
-    );
-
     final interval = Duration(
       seconds: settings.runtime.asyncPollIntervalSeconds.clamp(1, 60),
     );
-    final deadline = DateTime.now().add(
-      Duration(seconds: settings.runtime.asyncTimeoutSeconds.clamp(5, 3600)),
+    final timeout = Duration(
+      seconds: settings.runtime.asyncTimeoutSeconds.clamp(5, 3600),
     );
+    final deadline =
+        _parseDateTime(restoredTask?.deadlineAt) ?? DateTime.now().add(timeout);
+    var asyncTask =
+        restoredTask ??
+        await _submitAsyncImageTask(
+          node: node,
+          provider: provider,
+          model: model,
+          prompt: prompt,
+          imageInputs: imageInputs,
+          interval: interval,
+          deadline: deadline,
+          requestOptions: requestOptions,
+        );
 
-    var attempt = 0;
+    var attempt = asyncTask.pollAttempts;
     while (true) {
       if (context.isCanceled()) {
+        asyncTask = asyncTask.copyWith(
+          state: 'canceled',
+          lastError: 'Async image task canceled',
+        );
+        _saveAsyncTask(node: node, task: asyncTask);
         throw StateError('Async image task canceled');
       }
       if (DateTime.now().isAfter(deadline)) {
-        throw StateError('Async image task timed out after $taskId');
+        asyncTask = asyncTask.copyWith(
+          state: 'timed_out',
+          deadlineAt: deadline.toUtc().toIso8601String(),
+          lastError: 'Async image task timed out: ${asyncTask.taskId}',
+        );
+        _saveAsyncTask(node: node, task: asyncTask);
+        throw StateError('Async image task timed out: ${asyncTask.taskId}');
       }
-      await Future<void>.delayed(interval);
+      final scheduledPoll =
+          _parseDateTime(asyncTask.nextPollAt) ?? DateTime.now().add(interval);
+      final wait = scheduledPoll.difference(DateTime.now());
+      if (!wait.isNegative && wait > Duration.zero) {
+        await Future<void>.delayed(wait);
+      }
       if (context.isCanceled()) {
+        asyncTask = asyncTask.copyWith(
+          state: 'canceled',
+          lastError: 'Async image task canceled',
+        );
+        _saveAsyncTask(node: node, task: asyncTask);
         throw StateError('Async image task canceled');
       }
 
       attempt += 1;
+      asyncTask = asyncTask.copyWith(
+        state: 'polling',
+        pollAttempts: attempt,
+        deadlineAt: deadline.toUtc().toIso8601String(),
+        nextPollAt: DateTime.now().add(interval).toUtc().toIso8601String(),
+        lastError: '',
+      );
+      _saveAsyncTask(node: node, task: asyncTask);
       services.executionSignals?.setPollProgress(node.id, '轮询 $attempt');
+      final taskId = asyncTask.taskId;
       final poll = AsyncImageProtocol.buildPollRequest(
         provider: provider,
         taskId: taskId,
       );
-      final pollResponse = await services.providerClient.send(poll);
+      final pollResponse = await services.providerClient.send(
+        poll,
+        options: requestOptions,
+      );
       if (!pollResponse.isSuccess) {
         // Transient poll failure: log and keep trying until the deadline.
         services.logs.add(
@@ -587,10 +613,22 @@ class CainFlowNodeExecutor implements NodeExecutor {
           'Async poll #$attempt failed (${pollResponse.statusCode}), retrying',
           scope: 'ImageGenerate(async)',
         );
+        asyncTask = asyncTask.copyWith(
+          state: 'poll_error',
+          lastError: 'Async poll failed with status ${pollResponse.statusCode}',
+        );
+        _saveAsyncTask(node: node, task: asyncTask);
         continue;
       }
       final pollJson = _tryDecode(pollResponse.body);
-      if (pollJson == null) continue;
+      if (pollJson == null) {
+        asyncTask = asyncTask.copyWith(
+          state: 'poll_error',
+          lastError: 'Async poll response was not valid JSON',
+        );
+        _saveAsyncTask(node: node, task: asyncTask);
+        continue;
+      }
 
       final status = AsyncImageProtocol.extractStatus(pollJson);
       services.logs.add(
@@ -599,13 +637,22 @@ class CainFlowNodeExecutor implements NodeExecutor {
         scope: 'ImageGenerate(async)',
       );
       if (status == AsyncImageStatus.failed) {
-        throw StateError('Async image task failed: $taskId');
+        asyncTask = asyncTask.copyWith(
+          state: 'failed',
+          lastError: 'Async image task failed: ${asyncTask.taskId}',
+        );
+        _saveAsyncTask(node: node, task: asyncTask);
+        throw StateError('Async image task failed: ${asyncTask.taskId}');
       }
       if (status == AsyncImageStatus.completed) {
         final url = AsyncImageProtocol.extractResultUrl(pollJson);
         if (url.isEmpty) {
           throw StateError('Async image completed without a result URL');
         }
+        _saveAsyncTask(
+          node: node,
+          task: asyncTask.copyWith(state: 'completed', lastError: ''),
+        );
         return NodeExecutionResult(
           nodeId: node.id,
           outputs: {
@@ -613,6 +660,13 @@ class CainFlowNodeExecutor implements NodeExecutor {
           },
         );
       }
+      asyncTask = asyncTask.copyWith(
+        state: status.name,
+        deadlineAt: deadline.toUtc().toIso8601String(),
+        nextPollAt: DateTime.now().add(interval).toUtc().toIso8601String(),
+        lastError: '',
+      );
+      _saveAsyncTask(node: node, task: asyncTask);
     }
   }
 
@@ -638,6 +692,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
     required String scope,
     String providerName = '',
     String modelName = '',
+    ProviderRequestOptions options = const ProviderRequestOptions(),
   }) async {
     services.logs.add(
       LogLevel.info,
@@ -645,7 +700,10 @@ class CainFlowNodeExecutor implements NodeExecutor {
       scope: scope,
     );
     try {
-      final response = await services.providerClient.send(request);
+      final response = await services.providerClient.send(
+        request,
+        options: options,
+      );
       if (!response.isSuccess) {
         final error = response.toError(request);
         services.logs.add(
@@ -671,6 +729,84 @@ class CainFlowNodeExecutor implements NodeExecutor {
       );
       rethrow;
     }
+  }
+
+  Future<BackgroundAsyncTaskMetadata> _submitAsyncImageTask({
+    required FlowNode node,
+    required ProviderConfig provider,
+    required ModelConfig model,
+    required String prompt,
+    required _CollectedImageInputs imageInputs,
+    required Duration interval,
+    required DateTime deadline,
+    required ProviderRequestOptions requestOptions,
+  }) async {
+    final submit = AsyncImageProtocol.buildSubmitRequest(
+      provider: provider,
+      model: model,
+      prompt: prompt,
+      size: _stringFrom(node.data['size']) ?? '',
+      customParams: _customParamsFrom(node.data['customParams']),
+      referenceImages: imageInputs.referenceImages,
+      maskImage: imageInputs.maskImage,
+    );
+    final submitResponse = await _send(
+      node: node,
+      request: submit,
+      scope: 'ImageGenerate(async)',
+      providerName: provider.name,
+      modelName: model.modelId,
+      options: requestOptions,
+    );
+    final submitJson = _tryDecode(submitResponse.body);
+    if (submitJson == null) {
+      throw StateError('Async submit response was not valid JSON');
+    }
+    final taskId = AsyncImageProtocol.extractTaskId(submitJson);
+    if (taskId.isEmpty) {
+      throw StateError('Async submit did not return a task id');
+    }
+    services.logs.add(
+      LogLevel.info,
+      'Async image task submitted: $taskId',
+      scope: 'ImageGenerate(async)',
+    );
+    final task = BackgroundAsyncTaskMetadata(
+      taskId: taskId,
+      provider: provider.id,
+      pollUrl: AsyncImageProtocol.buildPollRequest(
+        provider: provider,
+        taskId: taskId,
+      ).url,
+      state: 'submitted',
+      nodeId: node.id,
+      pollAttempts: 0,
+      nextPollAt: DateTime.now().add(interval).toUtc().toIso8601String(),
+      deadlineAt: deadline.toUtc().toIso8601String(),
+      lastError: '',
+    );
+    _saveAsyncTask(node: node, task: task);
+    return task;
+  }
+
+  void _saveAsyncTask({
+    required FlowNode node,
+    required BackgroundAsyncTaskMetadata task,
+  }) {
+    final jobId = services.activeBackgroundJobId;
+    if (jobId.isEmpty) return;
+    services.backgroundCoordinator?.saveAsyncTask(jobId, task);
+    services.executionSignals?.backgroundJobId.value = jobId;
+    services.logs.add(
+      LogLevel.info,
+      'Async task ${task.taskId} persisted for ${node.id}: ${task.state}',
+      scope: 'ImageGenerate(async)',
+    );
+  }
+
+  ProviderRequestOptions _requestOptions(int requestTimeoutSeconds) {
+    final timeout = requestTimeoutSeconds.clamp(1, 3600);
+    return ProviderRequestOptions(timeout: Duration(seconds: timeout));
   }
 
   // --- Resolution helpers --------------------------------------------------
@@ -1026,6 +1162,11 @@ int? _intFrom(Object? value) {
   if (value is num) return value.toInt();
   if (value is String) return int.tryParse(value.trim());
   return null;
+}
+
+DateTime? _parseDateTime(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  return DateTime.tryParse(value.trim());
 }
 
 /// Normalizes a node's `customParams` entry into a request param map.

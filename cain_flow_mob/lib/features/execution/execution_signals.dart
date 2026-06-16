@@ -30,9 +30,11 @@ class NodeRunSnapshot {
 }
 
 class ExecutionSignals {
-  ExecutionSignals({DateTime Function()? now}) : _now = now ?? DateTime.now;
+  ExecutionSignals({DateTime Function()? now, this.onEvent})
+    : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
+  void Function(Map<String, dynamic> event)? onEvent;
 
   final workflowState = signal(WorkflowExecutionState.idle);
   final activeNodeId = signal<String?>(null);
@@ -47,6 +49,7 @@ class ExecutionSignals {
   /// Transient per-node progress text (e.g. async polling "轮询 3"), cleared
   /// when the node reaches a terminal state.
   final pollProgress = signal<Map<String, String>>(const {});
+  final backgroundJobId = signal<String>('');
 
   /// Ticks once per second while a workflow is running, so widgets reading a
   /// running node's elapsed time rebuild and show live seconds. Idle between
@@ -66,26 +69,31 @@ class ExecutionSignals {
   );
 
   void reset(Iterable<String> nodeIds) {
+    final activeBackgroundJob = backgroundJobId.value;
     workflowState.value = WorkflowExecutionState.idle;
     activeNodeId.value = null;
     lastError.value = '';
     imageOutputs.value = const {};
     pollProgress.value = const {};
+    backgroundJobId.value = activeBackgroundJob;
     workflowStartedAt.value = null;
     nodeStates.value = {
       for (final id in nodeIds)
         id: const NodeRunSnapshot(state: NodeRunState.pending),
     };
+    _emit('reset', payload: {'nodeIds': nodeIds.toList()});
   }
 
   /// Records an image output payload for [nodeId] for canvas previews.
   void setImageOutput(String nodeId, Map<String, dynamic> payload) {
     imageOutputs.value = {...imageOutputs.value, nodeId: payload};
+    _emit('image_output', nodeId: nodeId, payload: payload);
   }
 
   /// Sets transient progress text for a running node (async polling, etc.).
   void setPollProgress(String nodeId, String text) {
     pollProgress.value = {...pollProgress.value, nodeId: text};
+    _emit('poll_progress', nodeId: nodeId, message: text);
   }
 
   void markWorkflowRunning() {
@@ -93,14 +101,13 @@ class ExecutionSignals {
     lastError.value = '';
     workflowStartedAt.value = _now();
     _startTicker();
+    _emit('started');
   }
 
   void markNode(String nodeId, NodeRunState state, {String message = ''}) {
     final previous = nodeStates.value[nodeId];
     final now = _now();
-    final startedAt = state == NodeRunState.running
-        ? now
-        : previous?.startedAt;
+    final startedAt = state == NodeRunState.running ? now : previous?.startedAt;
     final finishedAt = switch (state) {
       NodeRunState.completed ||
       NodeRunState.failed ||
@@ -124,12 +131,25 @@ class ExecutionSignals {
       final next = Map<String, String>.from(pollProgress.value)..remove(nodeId);
       pollProgress.value = next;
     }
+
+    _emit(
+      switch (state) {
+        NodeRunState.running => 'node_running',
+        NodeRunState.completed => 'node_completed',
+        NodeRunState.failed => 'node_failed',
+        NodeRunState.skipped => 'node_skipped',
+        NodeRunState.pending => 'node_pending',
+      },
+      nodeId: nodeId,
+      message: message,
+    );
   }
 
   void markWorkflowCompleted() {
     workflowState.value = WorkflowExecutionState.completed;
     activeNodeId.value = null;
     _stopTicker();
+    _emit('completed');
   }
 
   void markWorkflowFailed(String message) {
@@ -137,12 +157,14 @@ class ExecutionSignals {
     activeNodeId.value = null;
     lastError.value = message;
     _stopTicker();
+    _emit('failed', message: message);
   }
 
   void markWorkflowCanceled() {
     workflowState.value = WorkflowExecutionState.canceled;
     activeNodeId.value = null;
     _stopTicker();
+    _emit('canceled');
   }
 
   /// Total elapsed workflow time, measured against the live tick while running.
@@ -169,6 +191,28 @@ class ExecutionSignals {
 
   /// Stops the timer; call when disposing in tests.
   void dispose() => _stopTicker();
+
+  void _emit(
+    String type, {
+    String nodeId = '',
+    String message = '',
+    double progress = 0,
+    Map<String, dynamic> payload = const {},
+  }) {
+    final handler = onEvent;
+    if (handler == null) return;
+    final nextPayload = <String, dynamic>{
+      if (nodeId.isNotEmpty) 'nodeId': nodeId,
+      ...payload,
+    };
+    handler({
+      'type': type,
+      'jobId': backgroundJobId.value,
+      if (message.isNotEmpty) 'message': message,
+      if (progress > 0) 'progress': progress,
+      if (nextPayload.isNotEmpty) 'payload': nextPayload,
+    });
+  }
 }
 
 /// Shared execution signals used by the default workbench controller and the

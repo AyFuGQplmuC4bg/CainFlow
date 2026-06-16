@@ -9,8 +9,11 @@ abstract final class StorageKeys {
   static const historyRing = 'history:ring';
   static const promptLibrary = 'prompts:library';
   static const requestStats = 'stats:requests';
+  static const backgroundJobIndex = 'background:jobs:index';
 
   static String workflowDocument(String id) => 'workflow:$id';
 
   static String workflowSession(String id) => 'session:workflow:$id';
+
+  static String backgroundJob(String id) => 'background:job:$id';
 }

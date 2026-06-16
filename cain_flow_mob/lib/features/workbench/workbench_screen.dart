@@ -11,6 +11,7 @@ import '../execution/cain_flow_node_executor.dart';
 import '../execution/execution_services.dart';
 import '../execution/execution_signals.dart';
 import '../history/history_repository.dart';
+import '../history/run_history_screen.dart';
 import '../logs/log_panel.dart';
 import '../logs/log_signals.dart';
 import '../media/media_repository.dart';
@@ -20,8 +21,10 @@ import '../nodes/node_definition.dart';
 import '../settings/provider_settings.dart';
 import '../statistics/request_statistics.dart';
 import '../settings/settings_screen.dart';
+import '../background/background_service_channel.dart';
 import '../workflow/workflow_manager.dart';
 import '../workflow/workflow_repository.dart';
+import 'workbench_workflow_mapper.dart';
 import '../../core/models/workflow_document.dart';
 import '../../core/network/provider_client.dart';
 import '../../core/network/retrying_provider_client.dart';
@@ -184,7 +187,7 @@ class WorkbenchScreen extends SignalWidget {
           Padding(
             padding: const EdgeInsets.only(right: 4),
             child: FilledButton.icon(
-              onPressed: running ? _controller.stop : _controller.run,
+              onPressed: running ? _stopRun : _startRun,
               icon: Icon(
                 running ? Icons.stop_rounded : Icons.play_arrow_rounded,
               ),
@@ -212,6 +215,13 @@ class WorkbenchScreen extends SignalWidget {
                 child: _OverflowItem(
                   Icons.save_outlined,
                   context.l10n.saveWorkflow,
+                ),
+              ),
+              PopupMenuItem(
+                value: _OverflowAction.history,
+                child: _OverflowItem(
+                  Icons.history_rounded,
+                  context.l10n.history,
                 ),
               ),
               PopupMenuItem(
@@ -258,6 +268,8 @@ class WorkbenchScreen extends SignalWidget {
           'Workflow saved: $id',
           scope: 'workbench',
         );
+      case _OverflowAction.history:
+        _showHistory(context);
       case _OverflowAction.logs:
         _showLogs(context);
       case _OverflowAction.settings:
@@ -326,6 +338,11 @@ class WorkbenchScreen extends SignalWidget {
             ),
           ),
           IconButton(
+            tooltip: context.l10n.history,
+            onPressed: () => _showHistory(context),
+            icon: const Icon(Icons.history_rounded),
+          ),
+          IconButton(
             tooltip: context.l10n.settings,
             onPressed: () => _showSettings(context),
             icon: const Icon(Icons.tune_rounded),
@@ -333,7 +350,7 @@ class WorkbenchScreen extends SignalWidget {
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
-              onPressed: running ? _controller.stop : _controller.run,
+              onPressed: running ? _stopRun : _startRun,
               icon: Icon(
                 running ? Icons.stop_rounded : Icons.play_arrow_rounded,
               ),
@@ -353,6 +370,61 @@ class WorkbenchScreen extends SignalWidget {
       ),
     );
   }
+
+  Future<void> _startRun() async {
+    if (!_supportsAndroidForegroundService) {
+      await _controller.run();
+      return;
+    }
+
+    final workflow = workbenchSignalsToWorkflow(workbenchSignals);
+    final queuedJobId = _controller.queueBackgroundRun(workflow);
+      try {
+        await backgroundTaskBridge.startForegroundService(
+          jobId: queuedJobId ?? '',
+          workflow: workflow.toJson(),
+        );
+      } catch (error) {
+        logSignals.add(
+          LogLevel.error,
+          'Failed to start Android background task: $error',
+          scope: 'background_service',
+        );
+        _controller.stop();
+    }
+  }
+
+  Future<void> _stopRun() async {
+    if (!_supportsAndroidForegroundService) {
+      _controller.stop();
+      return;
+    }
+
+    final jobId = executionSignals.backgroundJobId.value.trim();
+      try {
+        await backgroundTaskBridge.stopForegroundService(jobId: jobId);
+      } catch (error) {
+        logSignals.add(
+          LogLevel.warning,
+          'Failed to stop Android background task cleanly: $error',
+          scope: 'background_service',
+        );
+      } finally {
+      _controller.stop();
+    }
+  }
+}
+
+bool get _supportsAndroidForegroundService =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+Future<void> _showHistory(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (context) =>
+        RunHistoryScreen(repository: HistoryRepository(store: _safeStore())),
+  );
 }
 
 Future<void> _showSettings(BuildContext context) {
@@ -658,7 +730,7 @@ class _AppTitle extends StatelessWidget {
 // Overflow menu enum + item helper (compact AppBar)
 // ---------------------------------------------------------------------------
 
-enum _OverflowAction { undo, redo, save, logs, settings }
+enum _OverflowAction { undo, redo, save, history, logs, settings }
 
 class _OverflowItem extends StatelessWidget {
   const _OverflowItem(this.icon, this.label);
@@ -806,10 +878,12 @@ class _MiniInspector extends SignalWidget {
 
 /// Inline badge data for the mini-inspector (mirrors node_card.dart logic).
 ({Color color, String code}) _miniNodeBadge(String type) {
-  if (type.startsWith('Control'))
+  if (type.startsWith('Control')) {
     return (color: CainTokens.signalControl, code: _miniCode(type));
-  if (type.startsWith('Image') || type == 'CameraControl')
+  }
+  if (type.startsWith('Image') || type == 'CameraControl') {
     return (color: CainTokens.signalImage, code: _miniCode(type));
+  }
   return (color: CainTokens.signalText, code: _miniCode(type));
 }
 

@@ -2,10 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cain_flow_mob/core/models/flow_node.dart';
+import 'package:cain_flow_mob/core/models/workflow_document.dart';
 import 'package:cain_flow_mob/core/network/provider_client.dart';
 import 'package:cain_flow_mob/core/storage/local_kv_store.dart';
+import 'package:cain_flow_mob/features/background/background_execution_coordinator.dart';
+import 'package:cain_flow_mob/features/background/background_job_repository.dart';
 import 'package:cain_flow_mob/features/execution/cain_flow_node_executor.dart';
 import 'package:cain_flow_mob/features/execution/execution_services.dart';
+import 'package:cain_flow_mob/features/execution/execution_signals.dart';
 import 'package:cain_flow_mob/features/execution/node_executor.dart';
 import 'package:cain_flow_mob/features/execution/provider_request_builder.dart';
 import 'package:cain_flow_mob/features/logs/log_signals.dart';
@@ -444,6 +448,7 @@ void main() {
           ),
         ],
         runtime: RuntimeSettings(
+          requestTimeoutSeconds: timeout,
           activeImageModelId: 'aimg',
           asyncPollIntervalSeconds: pollInterval,
           asyncTimeoutSeconds: timeout,
@@ -484,6 +489,80 @@ void main() {
         expect(harness.client.requests.length, 3);
       },
     );
+
+    test('propagates request timeout to submit and poll requests', () async {
+      final harness = ExecutorHarness(
+        settings: asyncSettings(timeout: 45),
+        responses: const [
+          FakeResponse(200, '{"id":"task-timeout"}'),
+          FakeResponse(
+            200,
+            '{"status":"completed","data":{"image_url":"https://cdn/x.png"}}',
+          ),
+        ],
+      );
+      final node = const FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0);
+
+      await harness.executor.execute(
+        node,
+        _context(inputs: const {'prompt': 'a city'}),
+      );
+
+      expect(harness.client.options.length, 2);
+      expect(harness.client.options.first.timeout, const Duration(seconds: 45));
+      expect(harness.client.options.last.timeout, const Duration(seconds: 45));
+    });
+
+    test('resumes from a persisted async task without resubmitting', () async {
+      final harness = ExecutorHarness(
+        settings: asyncSettings(),
+        responses: const [
+          FakeResponse(
+            200,
+            '{"status":"completed","data":{"image_url":"https://cdn/resume.png"}}',
+          ),
+        ],
+        backgroundJobId: 'job-resume',
+      );
+      harness.backgroundCoordinator!.enqueueWorkflow(
+        jobId: 'job-resume',
+        workflow: _workflowForAsyncNode(),
+        asyncTask: BackgroundAsyncTaskMetadata(
+          taskId: 'task-resume',
+          provider: 'prov',
+          pollUrl: 'https://api.example.com/v1/images/generations/task-resume',
+          state: 'submitted',
+          nodeId: 'gen',
+          pollAttempts: 1,
+          nextPollAt: DateTime.now()
+              .subtract(const Duration(milliseconds: 1))
+              .toUtc()
+              .toIso8601String(),
+          deadlineAt: DateTime.now()
+              .add(const Duration(minutes: 5))
+              .toUtc()
+              .toIso8601String(),
+        ),
+      );
+
+      final node = const FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0);
+      final result = await harness.executor.execute(
+        node,
+        _context(inputs: const {'prompt': 'resume me'}),
+      );
+
+      final image = result.outputs['image'] as Map;
+      expect(image['url'], 'https://cdn/resume.png');
+      expect(harness.client.requests.length, 1);
+      expect(harness.client.requests.single.method, 'GET');
+
+      final snapshot = harness.backgroundCoordinator!.loadJob('job-resume');
+      expect(snapshot, isNotNull);
+      expect(snapshot!.asyncTask, isNotNull);
+      expect(snapshot.asyncTask!.taskId, 'task-resume');
+      expect(snapshot.asyncTask!.state, 'completed');
+      expect(snapshot.asyncTask!.pollAttempts, 2);
+    });
 
     test('throws when the task reports failure', () async {
       final harness = ExecutorHarness(
@@ -699,17 +778,33 @@ class _FakeDownloader implements MediaDownloader {
 const _tinyPngBase64 =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
+WorkflowDocument _workflowForAsyncNode() {
+  return const WorkflowDocument(
+    name: 'Async workflow',
+    canvas: WorkflowCanvas(x: 0, y: 0, zoom: 1),
+    nodes: [FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0)],
+    connections: [],
+    version: WorkflowDocument.defaultVersion,
+  );
+}
+
 /// Shared test harness reused across Text/TextChat/ImageGenerate/ImageSave.
 class ExecutorHarness {
   ExecutorHarness({
     ProviderSettings? settings,
     List<FakeResponse> responses = const [],
     MediaDownloader? downloader,
+    String backgroundJobId = '',
   }) : client = FakeProviderClient(responses) {
     store = MemoryLocalKvStore();
     settingsRepository = ProviderSettingsRepository(store: store);
     if (settings != null) settingsRepository.save(settings);
     logs = LogSignals();
+    executionSignals = ExecutionSignals();
+    backgroundCoordinator = BackgroundExecutionCoordinator(
+      repository: BackgroundJobRepository(store: store),
+    );
+    executionSignals.backgroundJobId.value = backgroundJobId;
     mediaRoot = Directory.systemTemp.createTempSync('cainflow_exec_test');
     mediaRepository = MediaRepository(store: store, mediaRoot: mediaRoot);
     services = ExecutionServices(
@@ -718,7 +813,10 @@ class ExecutorHarness {
       mediaRepository: mediaRepository,
       logs: logs,
       workflowId: 'wf-test',
+      backgroundJobId: backgroundJobId,
       downloaderOverride: downloader,
+      executionSignals: executionSignals,
+      backgroundCoordinator: backgroundCoordinator,
     );
     executor = CainFlowNodeExecutor(services: services);
   }
@@ -726,8 +824,10 @@ class ExecutorHarness {
   late final MemoryLocalKvStore store;
   late final ProviderSettingsRepository settingsRepository;
   late final LogSignals logs;
+  late final ExecutionSignals executionSignals;
   late final Directory mediaRoot;
   late final MediaRepository mediaRepository;
+  late final BackgroundExecutionCoordinator backgroundCoordinator;
   late final ExecutionServices services;
   late final CainFlowNodeExecutor executor;
   final FakeProviderClient client;
@@ -744,6 +844,7 @@ class FakeProviderClient implements ProviderClient {
 
   final List<FakeResponse> _responses;
   final List<ProviderRequest> requests = [];
+  final List<ProviderRequestOptions> options = [];
   int _index = 0;
 
   @override
@@ -752,6 +853,7 @@ class FakeProviderClient implements ProviderClient {
     ProviderRequestOptions options = const ProviderRequestOptions(),
   }) async {
     requests.add(request);
+    this.options.add(options);
     final response = _responses[_index.clamp(0, _responses.length - 1)];
     if (_index < _responses.length - 1) _index += 1;
     return ProviderResponse(

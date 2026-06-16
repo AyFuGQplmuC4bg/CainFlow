@@ -8,7 +8,32 @@ void main() {
       id: id,
       workflowName: 'WF',
       createdAt: DateTime.utc(2026, 1, 1),
+      durationMillis: 1234,
+      stage: const StageSummary(
+        label: 'Render',
+        kind: 'image-generate',
+        nodeCount: 3,
+        keyNodeTitles: ['Text Prompt', 'Image Generate'],
+      ),
       prompt: 'a cat',
+      outputs: [
+        const RunOutput(
+          id: 'out_$id',
+          kind: RunOutputKind.image,
+          nodeId: 'node_$id',
+          nodeTitle: 'Image Generate',
+          relativePath: 'workflows/demo/media/$id.png',
+          thumbnailRelativePath: 'workflows/demo/media/thumb_$id.png',
+          url: 'https://cdn/$id.png',
+        ),
+        const RunOutput(
+          id: 'txt_$id',
+          kind: RunOutputKind.text,
+          nodeId: 'node_text_$id',
+          nodeTitle: 'Text Prompt',
+          text: 'result $id',
+        ),
+      ],
       resultUrl: 'https://cdn/$id.png',
     );
   }
@@ -21,6 +46,10 @@ void main() {
     expect(all.first.id, 'b');
     expect(all.last.id, 'a');
     expect(all.first.prompt, 'a cat');
+    expect(all.first.stage?.label, 'Render');
+    expect(all.first.outputs.length, 2);
+    expect(all.first.outputs.first.kind, RunOutputKind.image);
+    expect(all.first.outputs.last.kind, RunOutputKind.text);
   });
 
   test('trims to capacity', () {
@@ -44,6 +73,19 @@ void main() {
   test('malformed JSON yields empty list', () {
     final store = _MemStore()..setString('history:ring', '{not json');
     expect(HistoryRepository(store: store).loadAll(), isEmpty);
+  });
+
+  test('legacy record still loads an image output pointer', () {
+    final store = _MemStore()
+      ..setString(
+        'history:ring',
+        '[{"id":"x","workflowName":"WF","createdAt":"2026-01-01T00:00:00.000Z","resultUrl":"https://cdn/x.png"}]',
+      );
+    final all = HistoryRepository(store: store).loadAll();
+    expect(all, hasLength(1));
+    expect(all.single.outputs, hasLength(1));
+    expect(all.single.outputs.single.kind, RunOutputKind.image);
+    expect(all.single.outputs.single.url, 'https://cdn/x.png');
   });
 }
 

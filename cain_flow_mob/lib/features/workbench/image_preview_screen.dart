@@ -4,22 +4,37 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 
+import '../media/gallery_save_service.dart';
+
 /// Full-screen, pinch-zoomable preview of an image payload
 /// (`{kind: url|asset, ...}`). Opened by tapping a node thumbnail.
 class ImagePreviewScreen extends StatelessWidget {
-  const ImagePreviewScreen({super.key, required this.imageProvider});
+  const ImagePreviewScreen({
+    super.key,
+    required this.imageProvider,
+    this.sourcePayload,
+    this.onSaveRequested,
+  });
 
   final ImageProvider imageProvider;
+  final Map<String, dynamic>? sourcePayload;
+  final Future<GallerySaveResult> Function()? onSaveRequested;
 
   /// Builds a preview route for a payload, or null if it can't be resolved.
   static Future<void> open(
     BuildContext context, {
     required ImageProvider imageProvider,
+    Map<String, dynamic>? sourcePayload,
+    Future<GallerySaveResult> Function()? onSaveRequested,
   }) {
     return Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => ImagePreviewScreen(imageProvider: imageProvider),
+        builder: (_) => ImagePreviewScreen(
+          imageProvider: imageProvider,
+          sourcePayload: sourcePayload,
+          onSaveRequested: onSaveRequested,
+        ),
       ),
     );
   }
@@ -32,6 +47,38 @@ class ImagePreviewScreen extends StatelessWidget {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          if (sourcePayload != null)
+            IconButton(
+              tooltip: 'Save to gallery',
+              onPressed: () async {
+                final handler = onSaveRequested;
+                if (handler == null) return;
+                final messenger = ScaffoldMessenger.of(context);
+                final result = await handler();
+                if (!context.mounted) return;
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      switch (result.status) {
+                        GallerySaveStatus.saved => 'Saved to gallery',
+                        GallerySaveStatus.permissionDenied =>
+                          'Gallery access denied',
+                        GallerySaveStatus.missingFile => 'File not found',
+                        GallerySaveStatus.unsupportedSource =>
+                          'This image cannot be saved',
+                        GallerySaveStatus.failed =>
+                          result.message.isEmpty
+                              ? 'Save failed'
+                              : result.message,
+                      },
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.download_rounded),
+            ),
+        ],
       ),
       body: ExtendedImage(
         image: imageProvider,

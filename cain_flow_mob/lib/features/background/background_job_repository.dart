@@ -101,7 +101,8 @@ class BackgroundJobSnapshot {
     List<BackgroundAsyncTaskMetadata>? asyncTasks,
     this.error = '',
   }) : asyncTasks = asyncTasks ?? (asyncTask == null ? const [] : [asyncTask]),
-       asyncTask = asyncTask ??
+       asyncTask =
+           asyncTask ??
            ((asyncTasks != null && asyncTasks.isNotEmpty)
                ? asyncTasks.first
                : null);
@@ -116,9 +117,11 @@ class BackgroundJobSnapshot {
             )
           : WorkflowDocument.empty(),
       status: _statusFrom(json['status']),
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? '') ??
+      updatedAt:
+          DateTime.tryParse(json['updatedAt']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       asyncTasks: parsedTasks,
       error: json['error']?.toString() ?? '',
@@ -147,12 +150,13 @@ class BackgroundJobSnapshot {
     final nextTasks = clearAsyncTask
         ? const <BackgroundAsyncTaskMetadata>[]
         : asyncTasks ??
-            (asyncTask != null
-                ? <BackgroundAsyncTaskMetadata>[asyncTask]
-                : this.asyncTasks);
+              (asyncTask != null
+                  ? <BackgroundAsyncTaskMetadata>[asyncTask]
+                  : this.asyncTasks);
     final nextTask = clearAsyncTask
         ? null
-        : asyncTask ?? (nextTasks.isNotEmpty ? nextTasks.first : this.asyncTask);
+        : asyncTask ??
+              (nextTasks.isNotEmpty ? nextTasks.first : this.asyncTask);
     return BackgroundJobSnapshot(
       jobId: jobId,
       workflow: workflow ?? this.workflow,
@@ -203,10 +207,7 @@ class BackgroundJobRepository {
 
   List<BackgroundJobSnapshot> loadAll() {
     final ids = _loadIds();
-    return [
-      for (final id in ids)
-        if (loadJob(id) case final snapshot?) snapshot,
-    ];
+    return [for (final id in ids) ?loadJob(id)];
   }
 
   List<BackgroundJobSnapshot> loadAllJobs() => loadAll();
@@ -260,9 +261,11 @@ List<BackgroundAsyncTaskMetadata> _parseAsyncTasks(Map<String, dynamic> json) {
   if (list is List) {
     return list
         .whereType<Map>()
-        .map((item) => BackgroundAsyncTaskMetadata.fromJson(
-              Map<String, dynamic>.from(item),
-            ))
+        .map(
+          (item) => BackgroundAsyncTaskMetadata.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
         .where((task) => task.taskId.isNotEmpty)
         .toList();
   }

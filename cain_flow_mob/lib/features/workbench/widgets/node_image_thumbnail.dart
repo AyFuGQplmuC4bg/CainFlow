@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../media/gallery_save_service.dart';
 import '../image_preview_screen.dart';
 
 /// Renders a small preview of an image payload (`{kind: url|asset, ...}`)
@@ -30,7 +31,13 @@ class NodeImageThumbnail extends StatelessWidget {
       resolveAsset: _resolveAssetFile,
     );
     if (provider == null || !context.mounted) return;
-    await ImagePreviewScreen.open(context, imageProvider: provider);
+    final saveService = GallerySaveService(resolveAsset: _resolveAssetFile);
+    await ImagePreviewScreen.open(
+      context,
+      imageProvider: provider,
+      sourcePayload: payload,
+      onSaveRequested: () => saveService.saveImagePayload(payload),
+    );
   }
 
   Widget _buildThumb(BuildContext context) {

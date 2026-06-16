@@ -1,3 +1,4 @@
+import '../../core/models/workflow_document.dart';
 import '../background/background_execution_coordinator.dart';
 import '../execution/execution_signals.dart';
 import '../execution/iterative_workflow_runner.dart';
@@ -49,20 +50,30 @@ class WorkbenchExecutionController {
 
   bool get isRunning => _isRunning;
 
-  Future<WorkflowRunResult?> run() async {
+  Future<WorkflowRunResult?> run({
+    WorkflowDocument? workflow,
+    String? jobId,
+  }) async {
     if (_isRunning) return null;
     _isRunning = true;
     workbench.runState.value = WorkbenchRunState.running;
 
-    final workflow = workbenchSignalsToWorkflow(workbench);
-    final backgroundJob = backgroundCoordinator?.enqueueWorkflow(
-      workflow: workflow,
+    final workflowDocument = workflow ?? workbenchSignalsToWorkflow(workbench);
+    final requestedJobId = jobId;
+    final backgroundJob = requestedJobId == null
+        ? backgroundCoordinator?.enqueueWorkflow(workflow: workflowDocument)
+        : backgroundCoordinator?.loadJob(requestedJobId) ??
+              backgroundCoordinator?.enqueueWorkflow(
+                workflow: workflowDocument,
+                jobId: requestedJobId,
+              );
+    final hasControlFlow = workbench.nodes.value.any(
+      (n) => n.type.startsWith('Control'),
     );
-    final hasControlFlow = workbench.nodes.value
-        .any((n) => n.type.startsWith('Control'));
     final coordinator = backgroundCoordinator;
-    final jobId = backgroundJob?.jobId;
-    _activeJobId = jobId;
+    final resolvedJobId = backgroundJob?.jobId;
+    _activeJobId = resolvedJobId;
+    executionSignals.backgroundJobId.value = resolvedJobId ?? '';
 
     logs.add(
       LogLevel.info,
@@ -71,8 +82,8 @@ class WorkbenchExecutionController {
     );
 
     try {
-      if (jobId != null) {
-        coordinator?.markRunning(jobId);
+      if (resolvedJobId != null) {
+        coordinator?.markRunning(resolvedJobId);
       }
       final WorkflowRunResult result;
       if (hasControlFlow) {
@@ -81,7 +92,7 @@ class WorkbenchExecutionController {
           signals: executionSignals,
         );
         _cancelActive = runner.cancel;
-        final iterative = await runner.run(workflow);
+        final iterative = await runner.run(workflowDocument);
         result = WorkflowRunResult(
           state: iterative.state,
           results: iterative.results,
@@ -94,18 +105,18 @@ class WorkbenchExecutionController {
           maxConcurrency: maxConcurrency,
         );
         _cancelActive = runner.cancel;
-        result = await runner.run(workflow);
+        result = await runner.run(workflowDocument);
       }
       _recordImageOutputs(result);
       _recordHistory(result);
-      if (jobId != null) {
+      if (resolvedJobId != null) {
         switch (result.state) {
           case WorkflowExecutionState.completed:
-            coordinator?.markCompleted(jobId);
+            coordinator?.markCompleted(resolvedJobId);
           case WorkflowExecutionState.failed:
-            coordinator?.markFailed(jobId, error: result.error);
+            coordinator?.markFailed(resolvedJobId, error: result.error);
           case WorkflowExecutionState.canceled:
-            coordinator?.markCanceled(jobId);
+            coordinator?.markCanceled(resolvedJobId);
           case WorkflowExecutionState.idle:
           case WorkflowExecutionState.running:
             break;
@@ -114,8 +125,8 @@ class WorkbenchExecutionController {
       _onResult(result);
       return result;
     } catch (error) {
-      if (jobId != null) {
-        coordinator?.markFailed(jobId, error: error.toString());
+      if (resolvedJobId != null) {
+        coordinator?.markFailed(resolvedJobId, error: error.toString());
       }
       logs.add(
         LogLevel.error,
@@ -127,17 +138,30 @@ class WorkbenchExecutionController {
       _isRunning = false;
       _cancelActive = null;
       _activeJobId = null;
+      executionSignals.backgroundJobId.value = '';
       if (workbench.runState.value == WorkbenchRunState.running) {
         workbench.runState.value = WorkbenchRunState.idle;
       }
     }
   }
 
+  String? queueBackgroundRun(WorkflowDocument workflow, {String? jobId}) {
+    final snapshot = backgroundCoordinator?.enqueueWorkflow(
+      workflow: workflow,
+      jobId: jobId,
+    );
+    if (snapshot == null) return null;
+    executionSignals.backgroundJobId.value = snapshot.jobId;
+    workbench.runState.value = WorkbenchRunState.running;
+    return snapshot.jobId;
+  }
+
   void stop() {
-    if (!_isRunning) return;
-    _cancelActive?.call();
-    final jobId = _activeJobId;
-    if (jobId != null) {
+    final jobId = _activeJobId ?? executionSignals.backgroundJobId.value.trim();
+    if (_isRunning) {
+      _cancelActive?.call();
+    }
+    if (jobId.isNotEmpty) {
       backgroundCoordinator?.markCanceled(jobId);
     }
     workbench.runState.value = WorkbenchRunState.stopped;
@@ -193,28 +217,147 @@ class WorkbenchExecutionController {
   }
 
   /// Appends a history entry for a completed run, capturing the last image
-  /// output (asset thumbnail or URL) as the entry's result pointer.
+  /// and text outputs as reviewable content pointers.
   void _recordHistory(WorkflowRunResult result) {
     final repo = historyRepository;
     if (repo == null || result.state != WorkflowExecutionState.completed) {
       return;
     }
-    Map<String, dynamic>? lastImage;
-    for (final r in result.results.values) {
-      final image = r.outputs['image'];
-      if (image is Map) lastImage = Map<String, dynamic>.from(image);
-    }
+    final nodesById = {for (final node in workbench.nodes.value) node.id: node};
+    final outputs = <RunOutput>[];
+
+    result.results.forEach((nodeId, nodeResult) {
+      final node = nodesById[nodeId];
+      final nodeTitle = node?.title ?? '';
+      nodeResult.outputs.forEach((key, value) {
+        final outputId = '${nodeId}_$key_${outputs.length}';
+        if (key == 'image' && value is Map) {
+          outputs.addAll(
+            _imageOutputsFromPayload(
+              outputId: outputId,
+              nodeId: nodeId,
+              nodeTitle: nodeTitle,
+              payload: Map<String, dynamic>.from(value),
+            ),
+          );
+          return;
+        }
+        if (_isTextOutputKey(key) && value != null) {
+          final text = value.toString().trim();
+          if (text.isNotEmpty) {
+            outputs.add(
+              RunOutput(
+                id: outputId,
+                kind: RunOutputKind.text,
+                nodeId: nodeId,
+                nodeTitle: nodeTitle,
+                text: text,
+              ),
+            );
+          }
+        }
+      });
+    });
+
+    if (outputs.isEmpty) return;
+
+    final thumbnail = outputs
+        .where((output) => output.kind == RunOutputKind.image)
+        .map((output) => output.thumbnailRelativePath)
+        .firstWhere((path) => path.isNotEmpty, orElse: () => '');
+    final startedAt = executionSignals.workflowStartedAt.value;
+    final finishedAt = DateTime.now().toUtc();
+    final duration = startedAt == null
+        ? 0
+        : finishedAt.difference(startedAt.toUtc()).inMilliseconds;
+
+    final textPrompt = outputs
+        .where((output) => output.kind == RunOutputKind.text)
+        .map((output) => output.text)
+        .firstWhere((text) => text.isNotEmpty, orElse: () => '');
+
+    final keyNodeTitles = [
+      for (final node in workbench.nodes.value)
+        if (result.results.containsKey(node.id) && node.title.trim().isNotEmpty)
+          node.title.trim(),
+    ].take(4).toList();
+
+    final stageKind = workbench.nodes.value
+        .map((node) => node.type)
+        .firstWhere((type) => type.isNotEmpty, orElse: () => 'workflow');
+    final stageLabel = keyNodeTitles.isEmpty
+        ? workbench.activeWorkflowName.value
+        : keyNodeTitles.join(' -> ');
+
+    final firstImage = outputs
+        .where((output) => output.kind == RunOutputKind.image)
+        .cast<RunOutput?>()
+        .firstWhere((output) => output != null, orElse: () => null);
+
     repo.add(
       HistoryEntry(
         id: 'h_${DateTime.now().microsecondsSinceEpoch}',
         workflowName: workbench.activeWorkflowName.value,
-        createdAt: DateTime.now().toUtc(),
-        thumbnailRelativePath:
-            lastImage?['thumbnailRelativePath']?.toString() ?? '',
-        resultRelativePath: lastImage?['relativePath']?.toString() ?? '',
-        resultUrl: lastImage?['url']?.toString() ?? '',
+        createdAt: finishedAt,
+        durationMillis: duration < 0 ? 0 : duration,
+        stage: StageSummary(
+          label: stageLabel,
+          kind: stageKind,
+          nodeCount: workbench.nodes.value.length,
+          keyNodeTitles: keyNodeTitles,
+        ),
+        prompt: textPrompt,
+        thumbnailRelativePath: thumbnail,
+        resultRelativePath: firstImage?.relativePath ?? '',
+        resultUrl: firstImage?.url ?? '',
+        outputs: outputs,
       ),
     );
+  }
+
+  List<RunOutput> _imageOutputsFromPayload({
+    required String outputId,
+    required String nodeId,
+    required String nodeTitle,
+    required Map<String, dynamic> payload,
+  }) {
+    if (payload['kind']?.toString() == 'images') {
+      final items = payload['items'];
+      if (items is! List) return const [];
+      return [
+        for (var i = 0; i < items.length; i++)
+          if (items[i] is Map)
+            ..._imageOutputsFromPayload(
+              outputId: '${outputId}_$i',
+              nodeId: nodeId,
+              nodeTitle: nodeTitle,
+              payload: Map<String, dynamic>.from(items[i] as Map),
+            ),
+      ];
+    }
+    final relativePath = payload['relativePath']?.toString() ?? '';
+    final thumbnailRelativePath =
+        payload['thumbnailRelativePath']?.toString() ?? '';
+    final url = payload['url']?.toString() ?? '';
+    if (relativePath.isEmpty && thumbnailRelativePath.isEmpty && url.isEmpty) {
+      return const [];
+    }
+    return [
+      RunOutput(
+        id: outputId,
+        kind: RunOutputKind.image,
+        nodeId: nodeId,
+        nodeTitle: nodeTitle,
+        relativePath: relativePath,
+        thumbnailRelativePath: thumbnailRelativePath,
+        url: url,
+        mimeType: payload['mimeType']?.toString() ?? '',
+      ),
+    ];
+  }
+
+  bool _isTextOutputKey(String key) {
+    return key == 'text' || key == 'content' || key == 'result';
   }
 
   void _onResult(WorkflowRunResult result) {
