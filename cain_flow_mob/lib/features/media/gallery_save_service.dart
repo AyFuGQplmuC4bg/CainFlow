@@ -78,13 +78,10 @@ class GallerySaveService {
 
       return const GallerySaveResult(GallerySaveStatus.unsupportedSource);
     } on GalException catch (error) {
-      return GallerySaveResult(
-        switch (error.type) {
-          GalExceptionType.accessDenied => GallerySaveStatus.permissionDenied,
-          _ => GallerySaveStatus.failed,
-        },
-        message: error.type.message,
-      );
+      return GallerySaveResult(switch (error.type) {
+        GalExceptionType.accessDenied => GallerySaveStatus.permissionDenied,
+        _ => GallerySaveStatus.failed,
+      }, message: error.type.message);
     } catch (error) {
       return GallerySaveResult(
         GallerySaveStatus.failed,

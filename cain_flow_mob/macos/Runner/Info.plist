@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CainFlow needs access to your photo library to save generated images.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>CainFlow needs permission to save generated images to your photo library.</string>
 </dict>
 </plist>

@@ -379,18 +379,18 @@ class WorkbenchScreen extends SignalWidget {
 
     final workflow = workbenchSignalsToWorkflow(workbenchSignals);
     final queuedJobId = _controller.queueBackgroundRun(workflow);
-      try {
-        await backgroundTaskBridge.startForegroundService(
-          jobId: queuedJobId ?? '',
-          workflow: workflow.toJson(),
-        );
-      } catch (error) {
-        logSignals.add(
-          LogLevel.error,
-          'Failed to start Android background task: $error',
-          scope: 'background_service',
-        );
-        _controller.stop();
+    try {
+      await backgroundTaskBridge.startForegroundService(
+        jobId: queuedJobId ?? '',
+        workflow: workflow.toJson(),
+      );
+    } catch (error) {
+      logSignals.add(
+        LogLevel.error,
+        'Failed to start Android background task: $error',
+        scope: 'background_service',
+      );
+      _controller.stop();
     }
   }
 
@@ -401,15 +401,15 @@ class WorkbenchScreen extends SignalWidget {
     }
 
     final jobId = executionSignals.backgroundJobId.value.trim();
-      try {
-        await backgroundTaskBridge.stopForegroundService(jobId: jobId);
-      } catch (error) {
-        logSignals.add(
-          LogLevel.warning,
-          'Failed to stop Android background task cleanly: $error',
-          scope: 'background_service',
-        );
-      } finally {
+    try {
+      await backgroundTaskBridge.stopForegroundService(jobId: jobId);
+    } catch (error) {
+      logSignals.add(
+        LogLevel.warning,
+        'Failed to stop Android background task cleanly: $error',
+        scope: 'background_service',
+      );
+    } finally {
       _controller.stop();
     }
   }

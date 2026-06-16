@@ -59,20 +59,16 @@ class ImagePreviewScreen extends StatelessWidget {
                 if (!context.mounted) return;
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text(
-                      switch (result.status) {
-                        GallerySaveStatus.saved => 'Saved to gallery',
-                        GallerySaveStatus.permissionDenied =>
-                          'Gallery access denied',
-                        GallerySaveStatus.missingFile => 'File not found',
-                        GallerySaveStatus.unsupportedSource =>
-                          'This image cannot be saved',
-                        GallerySaveStatus.failed =>
-                          result.message.isEmpty
-                              ? 'Save failed'
-                              : result.message,
-                      },
-                    ),
+                    content: Text(switch (result.status) {
+                      GallerySaveStatus.saved => 'Saved to gallery',
+                      GallerySaveStatus.permissionDenied =>
+                        'Gallery access denied',
+                      GallerySaveStatus.missingFile => 'File not found',
+                      GallerySaveStatus.unsupportedSource =>
+                        'This image cannot be saved',
+                      GallerySaveStatus.failed =>
+                        result.message.isEmpty ? 'Save failed' : result.message,
+                    }),
                   ),
                 );
               },

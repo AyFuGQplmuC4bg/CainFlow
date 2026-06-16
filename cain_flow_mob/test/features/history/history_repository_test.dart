@@ -17,7 +17,7 @@ void main() {
       ),
       prompt: 'a cat',
       outputs: [
-        const RunOutput(
+        RunOutput(
           id: 'out_$id',
           kind: RunOutputKind.image,
           nodeId: 'node_$id',
@@ -26,7 +26,7 @@ void main() {
           thumbnailRelativePath: 'workflows/demo/media/thumb_$id.png',
           url: 'https://cdn/$id.png',
         ),
-        const RunOutput(
+        RunOutput(
           id: 'txt_$id',
           kind: RunOutputKind.text,
           nodeId: 'node_text_$id',

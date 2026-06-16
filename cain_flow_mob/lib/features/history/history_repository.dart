@@ -24,11 +24,14 @@ class HistoryEntry {
     return HistoryEntry(
       id: json['id']?.toString() ?? '',
       workflowName: json['workflowName']?.toString() ?? '',
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       durationMillis: _intFrom(json['durationMillis']),
       stage: json['stage'] is Map
-          ? StageSummary.fromJson(Map<String, dynamic>.from(json['stage'] as Map))
+          ? StageSummary.fromJson(
+              Map<String, dynamic>.from(json['stage'] as Map),
+            )
           : null,
       outputs: _outputsFromJson(json),
       prompt: json['prompt']?.toString() ?? '',
@@ -177,7 +180,9 @@ class RunOutput {
   }
 
   Map<String, dynamic> toImagePayload() {
-    if (url.isNotEmpty) return {'kind': 'url', 'url': url};
+    if (url.isNotEmpty) {
+      return {'kind': 'url', 'url': url};
+    }
     return {
       'kind': 'asset',
       if (relativePath.isNotEmpty) 'relativePath': relativePath,
@@ -197,10 +202,14 @@ class HistoryRepository {
 
   List<HistoryEntry> loadAll() {
     final raw = store.getString(StorageKeys.historyRing);
-    if (raw == null || raw.isEmpty) return const [];
+    if (raw == null || raw.isEmpty) {
+      return const [];
+    }
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is! List) return const [];
+      if (decoded is! List) {
+        return const [];
+      }
       return decoded
           .whereType<Map>()
           .map((e) => HistoryEntry.fromJson(Map<String, dynamic>.from(e)))
@@ -214,12 +223,20 @@ class HistoryRepository {
   /// Prepends [entry] (newest first), trimming to [capacity].
   void add(HistoryEntry entry) {
     final entries = [entry, ...loadAll()];
-    if (entries.length > capacity) entries.removeRange(capacity, entries.length);
+    if (entries.length > capacity) {
+      entries.removeRange(capacity, entries.length);
+    }
     _save(entries);
   }
 
   void remove(String id) {
-    _save([for (final e in loadAll()) if (e.id != id) e]);
+    final kept = <HistoryEntry>[];
+    for (final entry in loadAll()) {
+      if (entry.id != id) {
+        kept.add(entry);
+      }
+    }
+    _save(kept);
   }
 
   void clear() => store.remove(StorageKeys.historyRing);
@@ -244,8 +261,7 @@ List<RunOutput> _outputsFromJson(Map<String, dynamic> json) {
 
   final resultUrl = json['resultUrl']?.toString() ?? '';
   final resultRelativePath = json['resultRelativePath']?.toString() ?? '';
-  final thumbnailRelativePath =
-      json['thumbnailRelativePath']?.toString() ?? '';
+  final thumbnailRelativePath = json['thumbnailRelativePath']?.toString() ?? '';
   if (resultUrl.isEmpty &&
       resultRelativePath.isEmpty &&
       thumbnailRelativePath.isEmpty) {
@@ -264,7 +280,11 @@ List<RunOutput> _outputsFromJson(Map<String, dynamic> json) {
 }
 
 int _intFrom(Object? value) {
-  if (value is int) return value;
-  if (value is num) return value.toInt();
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
   return int.tryParse(value?.toString() ?? '') ?? 0;
 }

@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/storage/local_kv_store.dart';
-import '../../core/storage/mmkv_local_kv_store.dart';
 import '../workbench/widgets/node_image_thumbnail.dart';
 import 'history_repository.dart';
 
 class RunHistoryScreen extends StatelessWidget {
-  RunHistoryScreen({
-    super.key,
-    HistoryRepository? repository,
-  }) : repository = repository ?? HistoryRepository(store: MmkvLocalKvStore());
+  const RunHistoryScreen({super.key, required this.repository});
 
   final HistoryRepository repository;
 
@@ -24,7 +19,7 @@ class RunHistoryScreen extends StatelessWidget {
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: entries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (context, index) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final entry = entries[index];
                 return _HistoryTile(
@@ -224,9 +219,9 @@ class _TextOutputBlock extends StatelessWidget {
                   tooltip: 'Copy',
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: output.text));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('Copied')));
                   },
                   icon: const Icon(Icons.copy_rounded),
                 ),

@@ -230,7 +230,7 @@ class WorkbenchExecutionController {
       final node = nodesById[nodeId];
       final nodeTitle = node?.title ?? '';
       nodeResult.outputs.forEach((key, value) {
-        final outputId = '${nodeId}_$key_${outputs.length}';
+        final outputId = '${nodeId}_${key}_${outputs.length}';
         if (key == 'image' && value is Map) {
           outputs.addAll(
             _imageOutputsFromPayload(
