@@ -29,13 +29,18 @@ void main() {
     );
   });
 
-  test('ImageGenerate declares an image model picker plus size/quality', () {
+  test('ImageGenerate declares web-aligned ports and params', () {
     final gen = nodeRegistry.get('ImageGenerate')!;
     final picker = gen.params.firstWhere((p) => p.name == 'apiConfigId');
     expect(picker.taskType, 'image');
-    final size = gen.params.firstWhere((p) => p.name == 'size');
-    expect(size.control, NodeParamControl.select);
-    expect(size.options, contains('1024x1024'));
+    expect(gen.inputPorts.map((p) => p.name), contains('camera_prompt'));
+    expect(gen.inputPorts.map((p) => p.name), contains('params'));
+    final resolution = gen.params.firstWhere((p) => p.name == 'resolution');
+    expect(resolution.control, NodeParamControl.select);
+    expect(resolution.options, contains('1024x1024'));
+    expect(gen.params.map((p) => p.name), contains('aspect'));
+    expect(gen.params.map((p) => p.name), contains('search'));
+    expect(gen.params.map((p) => p.name), isNot(contains('cameraPrompt')));
   });
 
   test('defaultData seeds only params that declare a default value', () {

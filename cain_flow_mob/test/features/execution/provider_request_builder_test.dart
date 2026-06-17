@@ -79,7 +79,7 @@ void main() {
       provider: provider,
       model: imageModel,
       prompt: 'A small desk lamp',
-      size: '1024x1024',
+      resolution: '1024x1024',
     );
 
     expect(request.url, 'https://api.example.com/v1/images/generations');
@@ -114,5 +114,29 @@ void main() {
     expect(request.body['moderation'], 'auto');
     expect(request.body['background'], 'transparent');
     expect(request.body['n'], 2);
+  });
+
+  test('ignores unsupported aspect and search at request-builder level', () {
+    const imageModel = ModelConfig(
+      id: 'model_image',
+      name: 'Image',
+      modelId: 'gpt-image-2',
+      taskType: ModelTaskType.image,
+      protocol: ModelProtocol.openai,
+      providerIds: ['prov_openai'],
+    );
+
+    final request = ProviderRequestBuilder.buildImageRequest(
+      provider: provider,
+      model: imageModel,
+      prompt: 'A small desk lamp',
+      resolution: '1024x1024',
+      aspect: '16:9',
+      search: true,
+    );
+
+    expect(request.body['size'], '1024x1024');
+    expect(request.body.containsKey('aspect'), isFalse);
+    expect(request.body.containsKey('search'), isFalse);
   });
 }

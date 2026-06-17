@@ -337,7 +337,7 @@ void main() {
       expect(harness.mediaRepository.loadAll().single.id, image['assetId']);
     });
 
-    test('combines system and camera prompts into the image prompt', () async {
+    test('combines connected system and camera prompts into the image prompt', () async {
       final harness = ExecutorHarness(
         settings: imageSettings(),
         responses: const [
@@ -347,20 +347,17 @@ void main() {
           ),
         ],
       );
-      final node = const FlowNode(
-        id: 'gen',
-        type: 'ImageGenerate',
-        x: 0,
-        y: 0,
-        data: {
-          'systemPrompt': 'keep it minimal',
-          'cameraPrompt': 'three-quarter product shot',
-        },
-      );
+      final node = const FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0);
 
       await harness.executor.execute(
         node,
-        _context(inputs: {'prompt': 'a desk lamp'}),
+        _context(
+          inputs: {
+            'prompt': 'a desk lamp',
+            'system_prompt': 'keep it minimal',
+            'camera_prompt': 'three-quarter product shot',
+          },
+        ),
       );
 
       expect(
@@ -524,7 +521,7 @@ void main() {
         ],
         backgroundJobId: 'job-resume',
       );
-      harness.backgroundCoordinator!.enqueueWorkflow(
+      harness.backgroundCoordinator.enqueueWorkflow(
         jobId: 'job-resume',
         workflow: _workflowForAsyncNode(),
         asyncTask: BackgroundAsyncTaskMetadata(
@@ -556,7 +553,7 @@ void main() {
       expect(harness.client.requests.length, 1);
       expect(harness.client.requests.single.method, 'GET');
 
-      final snapshot = harness.backgroundCoordinator!.loadJob('job-resume');
+      final snapshot = harness.backgroundCoordinator.loadJob('job-resume');
       expect(snapshot, isNotNull);
       expect(snapshot!.asyncTask, isNotNull);
       expect(snapshot.asyncTask!.taskId, 'task-resume');

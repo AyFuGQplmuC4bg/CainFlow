@@ -115,7 +115,7 @@ void main() {
     expect(deleted, isTrue);
   });
 
-  testWidgets('ImageGenerate exposes the aligned mobile parity params', (
+  testWidgets('ImageGenerate exposes the web-aligned params', (
     tester,
   ) async {
     await pump(
@@ -141,13 +141,13 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('param_apiConfigId')), findsOneWidget);
-    expect(find.byKey(const ValueKey('param_size')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_resolution')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_aspect')), findsOneWidget);
     expect(find.byKey(const ValueKey('param_quality')), findsOneWidget);
     expect(find.byKey(const ValueKey('param_moderation')), findsOneWidget);
     expect(find.byKey(const ValueKey('param_background')), findsOneWidget);
+    expect(find.byKey(const ValueKey('param_search')), findsOneWidget);
     expect(find.byKey(const ValueKey('param_generationCount')), findsOneWidget);
-    expect(find.byKey(const ValueKey('param_systemPrompt')), findsOneWidget);
-    expect(find.byKey(const ValueKey('param_cameraPrompt')), findsOneWidget);
     expect(find.byKey(const ValueKey('param_customParams')), findsOneWidget);
   });
 }

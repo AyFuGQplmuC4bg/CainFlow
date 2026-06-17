@@ -108,6 +108,7 @@ const nodeRegistry = NodeRegistry([
       NodePortDefinition(name: 'image_4', type: 'image', label: 'Ref 4'),
       NodePortDefinition(name: 'image_5', type: 'image', label: 'Ref 5'),
       NodePortDefinition(name: 'mask', type: 'image', label: 'Mask'),
+      NodePortDefinition(name: 'params', type: 'params', label: 'Params'),
     ],
     outputPorts: [
       NodePortDefinition(name: 'image', type: 'image', label: 'Image'),
@@ -120,8 +121,8 @@ const nodeRegistry = NodeRegistry([
         taskType: 'image',
       ),
       NodeParamDefinition(
-        name: 'size',
-        label: 'Size',
+        name: 'resolution',
+        label: 'Resolution',
         control: NodeParamControl.select,
         options: [
           '',
@@ -141,6 +142,13 @@ const nodeRegistry = NodeRegistry([
           '3840x2160',
           '2160x3840',
         ],
+        defaultValue: '',
+      ),
+      NodeParamDefinition(
+        name: 'aspect',
+        label: 'Aspect',
+        control: NodeParamControl.select,
+        options: ['', '1:1', '4:3', '3:4', '16:9', '9:16'],
         defaultValue: '',
       ),
       NodeParamDefinition(
@@ -165,22 +173,17 @@ const nodeRegistry = NodeRegistry([
         defaultValue: '',
       ),
       NodeParamDefinition(
+        name: 'search',
+        label: 'Search',
+        control: NodeParamControl.select,
+        options: ['false', 'true'],
+        defaultValue: 'false',
+      ),
+      NodeParamDefinition(
         name: 'generationCount',
         label: 'Count',
         control: NodeParamControl.number,
         defaultValue: 1,
-      ),
-      NodeParamDefinition(
-        name: 'systemPrompt',
-        label: 'System prompt',
-        control: NodeParamControl.multiline,
-        defaultValue: '',
-      ),
-      NodeParamDefinition(
-        name: 'cameraPrompt',
-        label: 'Camera prompt',
-        control: NodeParamControl.multiline,
-        defaultValue: '',
       ),
       NodeParamDefinition(
         name: 'customParams',

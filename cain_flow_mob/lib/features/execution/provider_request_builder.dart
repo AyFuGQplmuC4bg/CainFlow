@@ -57,10 +57,12 @@ abstract final class ProviderRequestBuilder {
     required ProviderConfig provider,
     required ModelConfig model,
     required String prompt,
-    String size = '',
+    String resolution = '',
+    String aspect = '',
     String quality = '',
     String moderation = '',
     String background = '',
+    bool search = false,
     int generationCount = 1,
     Map<String, dynamic> customParams = const {},
     List<String> referenceImages = const [],
@@ -79,10 +81,12 @@ abstract final class ProviderRequestBuilder {
         provider: provider,
         model: model,
         prompt: prompt,
-        size: size,
+        resolution: resolution,
+        aspect: aspect,
         quality: quality,
         moderation: moderation,
         background: background,
+        search: search,
         generationCount: generationCount,
         customParams: customParams,
         referenceImages: referenceImages,
@@ -129,10 +133,12 @@ ProviderRequest _buildOpenAiImageRequest({
   required ProviderConfig provider,
   required ModelConfig model,
   required String prompt,
-  required String size,
+  required String resolution,
+  required String aspect,
   required String quality,
   required String moderation,
   required String background,
+  required bool search,
   required int generationCount,
   required Map<String, dynamic> customParams,
   List<String> referenceImages = const [],
@@ -149,7 +155,7 @@ ProviderRequest _buildOpenAiImageRequest({
           : {'image_urls': referenceImages}),
     ...customParams,
   };
-  if (_isOpenAiImageSize(size)) body['size'] = size;
+  if (_isOpenAiImageSize(resolution)) body['size'] = resolution;
   if (_isOpenAiImageQuality(quality)) body['quality'] = quality;
   if (_isOpenAiImageModeration(moderation)) body['moderation'] = moderation;
   if (_isOpenAiImageBackground(background)) body['background'] = background;

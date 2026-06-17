@@ -491,10 +491,12 @@ class CainFlowNodeExecutor implements NodeExecutor {
       provider: provider,
       model: model,
       prompt: prompt,
-      size: _stringFrom(node.data['size']) ?? '',
+      resolution: _stringFrom(node.data['resolution']) ?? '',
+      aspect: _stringFrom(node.data['aspect']) ?? '',
       quality: _stringFrom(node.data['quality']) ?? '',
       moderation: _stringFrom(node.data['moderation']) ?? '',
       background: _stringFrom(node.data['background']) ?? '',
+      search: _stringFrom(node.data['search']) == 'true',
       generationCount: _intFrom(node.data['generationCount']) ?? 1,
       customParams: _customParamsFrom(node.data['customParams']),
       referenceImages: imageInputs.referenceImages,
@@ -745,7 +747,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       provider: provider,
       model: model,
       prompt: prompt,
-      size: _stringFrom(node.data['size']) ?? '',
+      size: _stringFrom(node.data['resolution']) ?? '',
       customParams: _customParamsFrom(node.data['customParams']),
       referenceImages: imageInputs.referenceImages,
       maskImage: imageInputs.maskImage,
@@ -860,16 +862,8 @@ class CainFlowNodeExecutor implements NodeExecutor {
     required Map<String, dynamic> inputs,
   }) {
     final prompt = _resolvePrompt(node: node, inputs: inputs).trim();
-    final systemPrompt =
-        (_stringFrom(inputs['system_prompt']) ??
-                _stringFrom(node.data['systemPrompt']) ??
-                '')
-            .trim();
-    final cameraPrompt =
-        (_stringFrom(inputs['camera_prompt']) ??
-                _stringFrom(node.data['cameraPrompt']) ??
-                '')
-            .trim();
+    final systemPrompt = (_stringFrom(inputs['system_prompt']) ?? '').trim();
+    final cameraPrompt = (_stringFrom(inputs['camera_prompt']) ?? '').trim();
 
     final sections = <String>[
       if (prompt.isNotEmpty) prompt,
