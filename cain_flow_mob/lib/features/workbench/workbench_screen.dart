@@ -499,7 +499,7 @@ Future<void> _openNodeEditor(BuildContext context, String nodeId) async {
       .cast<WorkbenchNode?>()
       .firstWhere((n) => n != null, orElse: () => null);
   if (node == null) return;
-  final models = _loadModels();
+  final settings = _loadProviderSettings();
 
   await showModalBottomSheet<void>(
     context: context,
@@ -507,7 +507,8 @@ Future<void> _openNodeEditor(BuildContext context, String nodeId) async {
     builder: (sheetContext) => NodeParamSheet(
       node: node,
       definition: nodeRegistry.get(node.type),
-      models: models,
+      models: settings.models,
+      providers: settings.providers,
       onChanged: (data) => workbenchSignals.updateNodeData(nodeId, data),
       onPickImage: () => _pickAndStoreImage(),
       onEditCamera: (current) => _editCamera(context, nodeId, current),
@@ -578,12 +579,12 @@ void _handlePortTap(
   }
 }
 
-List<ModelConfig> _loadModels() {
+ProviderSettings _loadProviderSettings() {
   try {
     final store = _safeStore();
-    return ProviderSettingsRepository(store: store).load().models;
+    return ProviderSettingsRepository(store: store).load();
   } catch (_) {
-    return const [];
+    return ProviderSettings.empty();
   }
 }
 

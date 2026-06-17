@@ -16,6 +16,7 @@ class NodeParamSheet extends StatefulWidget {
     required this.node,
     required this.definition,
     required this.models,
+    required this.providers,
     required this.onChanged,
     required this.onDelete,
     this.onPickImage,
@@ -25,6 +26,7 @@ class NodeParamSheet extends StatefulWidget {
   final WorkbenchNode node;
   final NodeDefinition? definition;
   final List<ModelConfig> models;
+  final List<ProviderConfig> providers;
   final ValueChanged<Map<String, dynamic>> onChanged;
   final VoidCallback onDelete;
 
@@ -35,7 +37,7 @@ class NodeParamSheet extends StatefulWidget {
   /// Opens the camera viewpoint editor seeded with [current] data and returns
   /// the updated camera data map (or null if cancelled). Injected by the screen.
   final Future<Map<String, dynamic>?> Function(Map<String, dynamic> current)?
-      onEditCamera;
+  onEditCamera;
 
   @override
   State<NodeParamSheet> createState() => _NodeParamSheetState();
@@ -84,7 +86,10 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
               IconButton(
                 tooltip: context.l10n.deleteNode,
                 onPressed: widget.onDelete,
-                icon: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: theme.colorScheme.error,
+                ),
               ),
             ],
           ),
@@ -138,7 +143,7 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
     final has = _data.containsKey('pitch') || _data.containsKey('yaw');
     final summary = has
         ? 'yaw ${_data['yaw'] ?? 0}° · pitch ${_data['pitch'] ?? 0}° · '
-            'dist ${_data['distance'] ?? 0}'
+              'dist ${_data['distance'] ?? 0}'
         : 'Default viewpoint';
     return InputDecorator(
       decoration: InputDecoration(
@@ -187,7 +192,9 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
         children: [
           Expanded(
             child: Text(
-              currentId.isEmpty ? context.l10n.noImageSelected : context.l10n.imageSelected(currentId),
+              currentId.isEmpty
+                  ? context.l10n.noImageSelected
+                  : context.l10n.imageSelected(currentId),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
@@ -257,6 +264,9 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
   }
 
   Widget _modelPicker(NodeParamDefinition param) {
+    final providerNames = {
+      for (final provider in widget.providers) provider.id: provider.name,
+    };
     final candidates = [
       for (final model in widget.models)
         if (param.taskType == null || model.taskType.name == param.taskType)
@@ -278,27 +288,82 @@ class _NodeParamSheetState extends State<NodeParamSheet> {
       );
     }
 
-    return DropdownButtonFormField<String>(
-      key: ValueKey('param_${param.name}'),
-      initialValue: value,
-      decoration: InputDecoration(
-        labelText: param.label,
-        border: const OutlineInputBorder(),
-      ),
-      items: [
-        for (final model in candidates)
-          DropdownMenuItem(
-            value: model.id,
-            child: Text(model.name.isEmpty ? model.modelId : model.name),
+    final selectedModel = candidates
+        .where((model) => model.id == value)
+        .cast<ModelConfig?>()
+        .firstOrNull;
+
+    return Column(
+      children: [
+        DropdownButtonFormField<String>(
+          key: ValueKey('param_${param.name}'),
+          initialValue: value,
+          decoration: InputDecoration(
+            labelText: param.label,
+            border: const OutlineInputBorder(),
           ),
+          items: [
+            for (final model in candidates)
+              DropdownMenuItem(
+                value: model.id,
+                child: Text(model.name.isEmpty ? model.modelId : model.name),
+              ),
+          ],
+          onChanged: (v) {
+            final nextModel = candidates
+                .where((model) => model.id == v)
+                .cast<ModelConfig?>()
+                .firstOrNull;
+            final nextData = Map<String, dynamic>.from(_data);
+            if (v == null || v.isEmpty) {
+              nextData.remove(param.name);
+              nextData.remove('providerId');
+            } else {
+              nextData[param.name] = v;
+              final providerIds = nextModel?.providerIds ?? const <String>[];
+              if (providerIds.length == 1) {
+                nextData['providerId'] = providerIds.single;
+              } else if (!providerIds.contains(nextData['providerId'])) {
+                nextData.remove('providerId');
+              }
+            }
+            setState(() => _data = nextData);
+            widget.onChanged(Map<String, dynamic>.from(_data));
+          },
+        ),
+        if ((selectedModel?.providerIds.length ?? 0) > 1) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            key: const ValueKey('param_providerId'),
+            initialValue:
+                selectedModel!.providerIds.contains(
+                  _data['providerId']?.toString(),
+                )
+                ? _data['providerId'].toString()
+                : null,
+            decoration: InputDecoration(
+              labelText: context.l10n.providerLabel,
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              for (final providerId in selectedModel.providerIds)
+                DropdownMenuItem(
+                  value: providerId,
+                  child: Text(providerNames[providerId] ?? providerId),
+                ),
+            ],
+            onChanged: (v) => _set('providerId', v),
+          ),
+        ],
       ],
-      onChanged: (v) => _set(param.name, v),
     );
   }
 
   Widget _customParams(NodeParamDefinition param) {
     final raw = _data[param.name];
-    final text = raw is Map ? const JsonEncoder.withIndent('  ').convert(raw) : '';
+    final text = raw is Map
+        ? const JsonEncoder.withIndent('  ').convert(raw)
+        : '';
     return TextFormField(
       key: ValueKey('param_${param.name}'),
       initialValue: text,

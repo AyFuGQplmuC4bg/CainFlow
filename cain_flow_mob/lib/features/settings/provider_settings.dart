@@ -15,6 +15,7 @@ class ProviderConfig {
     required this.apiKey,
     required this.endpoint,
     this.autoComplete = true,
+    this.requestTimeoutSeconds = 0,
   });
 
   factory ProviderConfig.fromJson(Map<String, dynamic> json) {
@@ -27,6 +28,7 @@ class ProviderConfig {
       autoComplete: json['autoComplete'] is bool
           ? json['autoComplete'] as bool
           : true,
+      requestTimeoutSeconds: _intFrom(json['requestTimeoutSeconds'], 0),
     );
   }
 
@@ -36,6 +38,7 @@ class ProviderConfig {
   final String apiKey;
   final String endpoint;
   final bool autoComplete;
+  final int requestTimeoutSeconds;
 
   String get maskedApiKey => maskSecret(apiKey);
 
@@ -47,6 +50,7 @@ class ProviderConfig {
       'apiKey': apiKey,
       'endpoint': endpoint,
       'autoComplete': autoComplete,
+      'requestTimeoutSeconds': requestTimeoutSeconds,
     };
   }
 }
@@ -100,7 +104,7 @@ class RuntimeSettings {
     this.retryCount = 0,
     this.activeChatModelId = '',
     this.activeImageModelId = '',
-    this.asyncPollIntervalSeconds = 2,
+    this.asyncPollIntervalSeconds = 5,
     this.asyncTimeoutSeconds = 300,
     this.maxConcurrency = 1,
     this.completionSoundEnabled = true,
@@ -115,12 +119,14 @@ class RuntimeSettings {
       retryCount: _intFrom(json['retryCount'], 0),
       activeChatModelId: json['activeChatModelId']?.toString() ?? '',
       activeImageModelId: json['activeImageModelId']?.toString() ?? '',
-      asyncPollIntervalSeconds: _intFrom(json['asyncPollIntervalSeconds'], 2),
+      asyncPollIntervalSeconds: _intFrom(json['asyncPollIntervalSeconds'], 5),
       asyncTimeoutSeconds: _intFrom(json['asyncTimeoutSeconds'], 300),
       maxConcurrency: _intFrom(json['maxConcurrency'], 1),
       completionSoundEnabled: _boolFrom(json['completionSoundEnabled'], true),
-      completionHapticsEnabled:
-          _boolFrom(json['completionHapticsEnabled'], true),
+      completionHapticsEnabled: _boolFrom(
+        json['completionHapticsEnabled'],
+        true,
+      ),
     );
   }
 

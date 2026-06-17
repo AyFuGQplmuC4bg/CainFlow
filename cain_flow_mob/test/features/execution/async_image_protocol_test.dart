@@ -25,13 +25,27 @@ void main() {
         provider: provider,
         model: model,
         prompt: 'a fox',
-        size: '1024x1024',
+        aspect: '1:1',
+        resolution: '1k',
       );
       expect(req.method, 'POST');
       expect(req.url, 'https://api.example.com/v1/images/generations');
       expect(req.headers['Authorization'], 'Bearer sk-secret');
       expect(req.body['prompt'], 'a fox');
-      expect(req.body['size'], '1024x1024');
+      expect(req.body['aspect_ratio'], '1:1');
+      expect(req.body['resolution'], '1k');
+      expect(req.body.containsKey('size'), isFalse);
+    });
+
+    test('submit omits unsupported resolution values', () {
+      final req = AsyncImageProtocol.buildSubmitRequest(
+        provider: provider,
+        model: model,
+        prompt: 'a fox',
+        resolution: '1024x1024',
+      );
+
+      expect(req.body.containsKey('resolution'), isFalse);
     });
 
     test('poll appends the task id', () {

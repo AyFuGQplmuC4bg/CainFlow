@@ -59,7 +59,7 @@ void main() {
     expect(settings.runtime.retryCount, 0);
     expect(settings.runtime.activeChatModelId, '');
     expect(settings.runtime.activeImageModelId, '');
-    expect(settings.runtime.asyncPollIntervalSeconds, 2);
+    expect(settings.runtime.asyncPollIntervalSeconds, 5);
     expect(settings.runtime.asyncTimeoutSeconds, 300);
   });
 

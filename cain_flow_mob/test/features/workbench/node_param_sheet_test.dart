@@ -12,6 +12,7 @@ void main() {
     required ValueChanged<Map<String, dynamic>> onChanged,
     VoidCallback? onDelete,
     List<ModelConfig> models = const [],
+    List<ProviderConfig> providers = const [],
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -20,6 +21,7 @@ void main() {
             node: node,
             definition: nodeRegistry.get(node.type),
             models: models,
+            providers: providers,
             onChanged: onChanged,
             onDelete: onDelete ?? () {},
           ),
@@ -96,6 +98,61 @@ void main() {
     expect(captured?['apiConfigId'], 'm-chat');
   });
 
+  testWidgets('model picker writes provider when selected model has choices', (
+    tester,
+  ) async {
+    Map<String, dynamic>? captured;
+    await pump(
+      tester,
+      node: const WorkbenchNode(
+        id: 'c',
+        type: 'TextChat',
+        title: 'Text Chat',
+        x: 0,
+        y: 0,
+      ),
+      models: const [
+        ModelConfig(
+          id: 'm-chat',
+          name: 'Chatter',
+          modelId: 'gpt',
+          taskType: ModelTaskType.chat,
+          protocol: ModelProtocol.openai,
+          providerIds: ['prov_fast', 'prov_slow'],
+        ),
+      ],
+      providers: const [
+        ProviderConfig(
+          id: 'prov_fast',
+          name: 'Fast Provider',
+          protocol: ModelProtocol.openai,
+          apiKey: 'fast-key',
+          endpoint: 'https://fast.example.com',
+        ),
+        ProviderConfig(
+          id: 'prov_slow',
+          name: 'Slow Provider',
+          protocol: ModelProtocol.openai,
+          apiKey: 'slow-key',
+          endpoint: 'https://slow.example.com',
+        ),
+      ],
+      onChanged: (data) => captured = data,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('param_apiConfigId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chatter').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('param_providerId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Slow Provider').last);
+    await tester.pumpAndSettle();
+
+    expect(captured?['apiConfigId'], 'm-chat');
+    expect(captured?['providerId'], 'prov_slow');
+  });
+
   testWidgets('delete button invokes onDelete', (tester) async {
     var deleted = false;
     await pump(
@@ -115,9 +172,7 @@ void main() {
     expect(deleted, isTrue);
   });
 
-  testWidgets('ImageGenerate exposes the web-aligned params', (
-    tester,
-  ) async {
+  testWidgets('ImageGenerate exposes the web-aligned params', (tester) async {
     await pump(
       tester,
       node: const WorkbenchNode(

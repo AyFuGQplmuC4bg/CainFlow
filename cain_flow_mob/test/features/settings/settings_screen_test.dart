@@ -139,10 +139,7 @@ void main() {
       find.byKey(const Key('model-name-field')),
       'My Chat Model',
     );
-    await tester.enterText(
-      find.byKey(const Key('model-id-field')),
-      'gpt-4.1',
-    );
+    await tester.enterText(find.byKey(const Key('model-id-field')), 'gpt-4.1');
 
     await tester.tap(find.byKey(const Key('model-save-button')));
     await tester.pumpAndSettle();
@@ -151,6 +148,52 @@ void main() {
     expect(saved.models.single.name, 'My Chat Model');
     expect(saved.models.single.modelId, 'gpt-4.1');
     expect(saved.models.single.taskType, ModelTaskType.chat);
+  });
+
+  testWidgets('model dialog saves multiple selected providers', (tester) async {
+    final store = _MemoryLocalKvStore();
+    final repository = ProviderSettingsRepository(store: store);
+    repository.save(
+      const ProviderSettings(
+        providers: [
+          ProviderConfig(
+            id: 'prov_fast',
+            name: 'Fast Provider',
+            protocol: ModelProtocol.openai,
+            apiKey: 'sk-fast',
+            endpoint: 'https://fast.example.com',
+          ),
+          ProviderConfig(
+            id: 'prov_slow',
+            name: 'Slow Provider',
+            protocol: ModelProtocol.openai,
+            apiKey: 'sk-slow',
+            endpoint: 'https://slow.example.com',
+          ),
+        ],
+        models: [],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SettingsScreen(repository: repository)),
+      ),
+    );
+
+    await tester.tap(find.text('Add model'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('model-name-field')), 'Chat');
+    await tester.enterText(find.byKey(const Key('model-id-field')), 'gpt-4.1');
+    await tester.tap(find.byKey(const Key('model-provider-prov_fast')));
+    await tester.tap(find.byKey(const Key('model-provider-prov_slow')));
+    await tester.tap(find.byKey(const Key('model-save-button')));
+    await tester.pumpAndSettle();
+
+    expect(repository.load().models.single.providerIds, [
+      'prov_fast',
+      'prov_slow',
+    ]);
   });
 
   testWidgets('settings screen persists runtime timeout edits', (tester) async {
@@ -175,7 +218,9 @@ void main() {
     expect(repository.load().runtime.requestTimeoutSeconds, 90);
   });
 
-  testWidgets('imports pasted workflow JSON into the workbench', (tester) async {
+  testWidgets('imports pasted workflow JSON into the workbench', (
+    tester,
+  ) async {
     final store = _MemoryLocalKvStore();
     final repository = ProviderSettingsRepository(store: store);
     final workflowRepository = WorkflowRepository(store: store);
@@ -208,9 +253,7 @@ void main() {
       find.byKey(const Key('workflow-import-field')),
       json,
     );
-    await tester.ensureVisible(
-      find.byKey(const Key('workflow-import-button')),
-    );
+    await tester.ensureVisible(find.byKey(const Key('workflow-import-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('workflow-import-button')));
     await tester.pumpAndSettle();
@@ -252,9 +295,7 @@ void main() {
       find.byKey(const Key('workflow-import-field')),
       '{not valid',
     );
-    await tester.ensureVisible(
-      find.byKey(const Key('workflow-import-button')),
-    );
+    await tester.ensureVisible(find.byKey(const Key('workflow-import-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('workflow-import-button')));
     await tester.pumpAndSettle();

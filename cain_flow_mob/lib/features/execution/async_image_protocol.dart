@@ -14,7 +14,8 @@ abstract final class AsyncImageProtocol {
     required ProviderConfig provider,
     required ModelConfig model,
     required String prompt,
-    String size = '',
+    String aspect = '',
+    String resolution = '',
     Map<String, dynamic> customParams = const {},
     List<String> referenceImages = const [],
     String? maskImage,
@@ -22,13 +23,17 @@ abstract final class AsyncImageProtocol {
     final body = <String, dynamic>{
       'model': model.modelId,
       'prompt': prompt,
-      ...customParams,
     };
-    if (size.isNotEmpty) body['size'] = size;
+    if (aspect.isNotEmpty) body['aspect_ratio'] = aspect;
+    final normalizedResolution = _normalizeResolution(resolution);
+    if (normalizedResolution.isNotEmpty) {
+      body['resolution'] = normalizedResolution;
+    }
     if (referenceImages.isNotEmpty) body['image_urls'] = referenceImages;
     if (maskImage != null && maskImage.trim().isNotEmpty) {
       body['mask'] = maskImage.trim();
     }
+    body.addAll(customParams);
 
     return ProviderRequest(
       url: _submitUrl(provider),
@@ -116,6 +121,14 @@ abstract final class AsyncImageProtocol {
         'Authorization': 'Bearer ${provider.apiKey.trim()}',
     };
   }
+}
+
+String _normalizeResolution(String resolution) {
+  final value = resolution.trim().toLowerCase();
+  return switch (value) {
+    '1k' || '2k' || '4k' => value,
+    _ => '',
+  };
 }
 
 enum AsyncImageStatus { pending, completed, failed }

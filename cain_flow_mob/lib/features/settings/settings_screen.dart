@@ -69,7 +69,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Row(
               children: [
-                Text(context.l10n.settingsTitle, style: theme.textTheme.titleLarge),
+                Text(
+                  context.l10n.settingsTitle,
+                  style: theme.textTheme.titleLarge,
+                ),
                 const Spacer(),
                 IconButton(
                   tooltip: context.l10n.closeSettings,
@@ -189,7 +192,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: TextFormField(
                 key: const Key('runtime-retry-field'),
                 initialValue: runtime.retryCount.toString(),
-                decoration: InputDecoration(labelText: context.l10n.retryCountLabel),
+                decoration: InputDecoration(
+                  labelText: context.l10n.retryCountLabel,
+                ),
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
                   final parsed = int.tryParse(value.trim());
@@ -220,8 +225,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (parsed == null) return;
                   _persist(
                     _settings.copyWith(
-                      runtime:
-                          runtime.copyWith(asyncPollIntervalSeconds: parsed),
+                      runtime: runtime.copyWith(
+                        asyncPollIntervalSeconds: parsed,
+                      ),
                     ),
                   );
                 },
@@ -315,7 +321,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       initialValue: value,
       decoration: InputDecoration(labelText: label),
       items: [
-        DropdownMenuItem<String?>(value: null, child: Text(context.l10n.noneOption)),
+        DropdownMenuItem<String?>(
+          value: null,
+          child: Text(context.l10n.noneOption),
+        ),
         for (final model in candidates)
           DropdownMenuItem<String?>(value: model.id, child: Text(model.name)),
       ],
@@ -336,9 +345,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           initialValue: current,
           decoration: const InputDecoration(border: OutlineInputBorder()),
           items: [
-            DropdownMenuItem<String?>(value: null, child: Text(l10n.langSystem)),
-            DropdownMenuItem<String?>(value: 'en', child: Text(l10n.langEnglish)),
-            DropdownMenuItem<String?>(value: 'zh', child: Text(l10n.langChinese)),
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text(l10n.langSystem),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'en',
+              child: Text(l10n.langEnglish),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'zh',
+              child: Text(l10n.langChinese),
+            ),
           ],
           onChanged: (code) => setLocale(code == null ? null : Locale(code)),
         ),
@@ -445,7 +463,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       if (mounted) Navigator.of(context).maybePop();
     } on FormatException catch (error) {
-      setState(() => _archiveError = context.l10n.invalidWorkflowJson(error.message));
+      setState(
+        () => _archiveError = context.l10n.invalidWorkflowJson(error.message),
+      );
       widget.logs.add(
         LogLevel.error,
         'Workflow import failed: invalid JSON',
@@ -479,9 +499,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _deleteModel(ModelConfig model) {
     _persist(
       _settings.copyWith(
-        models: _settings.models
-            .where((item) => item.id != model.id)
-            .toList(),
+        models: _settings.models.where((item) => item.id != model.id).toList(),
       ),
     );
     widget.logs.add(
@@ -515,10 +533,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _editModel({ModelConfig? existing}) async {
     final result = await showDialog<ModelConfig>(
       context: context,
-      builder: (context) => _ModelEditDialog(
-        existing: existing,
-        providers: _settings.providers,
-      ),
+      builder: (context) =>
+          _ModelEditDialog(existing: existing, providers: _settings.providers),
     );
     if (result == null) return;
     final models = [..._settings.models];
@@ -638,6 +654,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
   late final TextEditingController _name;
   late final TextEditingController _endpoint;
   late final TextEditingController _apiKey;
+  late final TextEditingController _timeout;
   late ModelProtocol _protocol;
   String? _testMessage;
   bool _testOk = false;
@@ -650,6 +667,11 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
     _name = TextEditingController(text: existing?.name ?? '');
     _endpoint = TextEditingController(text: existing?.endpoint ?? '');
     _apiKey = TextEditingController(text: existing?.apiKey ?? '');
+    _timeout = TextEditingController(
+      text: (existing?.requestTimeoutSeconds ?? 0) > 0
+          ? existing!.requestTimeoutSeconds.toString()
+          : '',
+    );
     _protocol = existing?.protocol ?? ModelProtocol.openai;
   }
 
@@ -658,6 +680,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
     _name.dispose();
     _endpoint.dispose();
     _apiKey.dispose();
+    _timeout.dispose();
     super.dispose();
   }
 
@@ -674,6 +697,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
       protocol: _protocol,
       apiKey: _apiKey.text.trim(),
       endpoint: _endpoint.text.trim(),
+      requestTimeoutSeconds: int.tryParse(_timeout.text.trim()) ?? 0,
     );
     final checker = ProviderHealthChecker(client: DartIoProviderClient());
     final result = await checker.check(provider);
@@ -689,7 +713,11 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      title: Text(widget.existing == null ? context.l10n.addProviderTitle : context.l10n.editProviderTitle),
+      title: Text(
+        widget.existing == null
+            ? context.l10n.addProviderTitle
+            : context.l10n.editProviderTitle,
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -702,7 +730,9 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
             TextField(
               key: const Key('provider-endpoint-field'),
               controller: _endpoint,
-              decoration: InputDecoration(labelText: context.l10n.endpointLabel),
+              decoration: InputDecoration(
+                labelText: context.l10n.endpointLabel,
+              ),
             ),
             TextField(
               key: const Key('provider-apikey-field'),
@@ -714,7 +744,9 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
             DropdownButtonFormField<ModelProtocol>(
               key: const Key('provider-protocol-field'),
               initialValue: _protocol,
-              decoration: InputDecoration(labelText: context.l10n.protocolLabel),
+              decoration: InputDecoration(
+                labelText: context.l10n.protocolLabel,
+              ),
               items: const [
                 DropdownMenuItem(
                   value: ModelProtocol.openai,
@@ -729,9 +761,15 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
                   child: Text('newApiImageAsync'),
                 ),
               ],
-              onChanged: (value) => setState(
-                () => _protocol = value ?? ModelProtocol.openai,
-              ),
+              onChanged: (value) =>
+                  setState(() => _protocol = value ?? ModelProtocol.openai),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('provider-timeout-field'),
+              controller: _timeout,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: context.l10n.timeoutLabel),
             ),
             const SizedBox(height: 8),
             Align(
@@ -747,9 +785,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
               Text(
                 _testMessage!,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: _testOk
-                      ? Colors.green
-                      : theme.colorScheme.error,
+                  color: _testOk ? Colors.green : theme.colorScheme.error,
                 ),
               ),
           ],
@@ -771,6 +807,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
                 apiKey: _apiKey.text.trim(),
                 endpoint: _endpoint.text.trim(),
                 autoComplete: widget.existing?.autoComplete ?? true,
+                requestTimeoutSeconds: int.tryParse(_timeout.text.trim()) ?? 0,
               ),
             );
           },
@@ -818,13 +855,12 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedProvider = _providerIds.isNotEmpty ? _providerIds.first : null;
-    final providerValue =
-        widget.providers.any((item) => item.id == selectedProvider)
-        ? selectedProvider
-        : null;
     return AlertDialog(
-      title: Text(widget.existing == null ? context.l10n.addModelTitle : context.l10n.editModelTitle),
+      title: Text(
+        widget.existing == null
+            ? context.l10n.addModelTitle
+            : context.l10n.editModelTitle,
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -843,7 +879,9 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
             DropdownButtonFormField<ModelTaskType>(
               key: const Key('model-task-field'),
               initialValue: _taskType,
-              decoration: InputDecoration(labelText: context.l10n.taskTypeLabel),
+              decoration: InputDecoration(
+                labelText: context.l10n.taskTypeLabel,
+              ),
               items: const [
                 DropdownMenuItem(
                   value: ModelTaskType.chat,
@@ -858,15 +896,16 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
                   child: Text('video'),
                 ),
               ],
-              onChanged: (value) => setState(
-                () => _taskType = value ?? ModelTaskType.chat,
-              ),
+              onChanged: (value) =>
+                  setState(() => _taskType = value ?? ModelTaskType.chat),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<ModelProtocol>(
               key: const Key('model-protocol-field'),
               initialValue: _protocol,
-              decoration: InputDecoration(labelText: context.l10n.protocolLabel),
+              decoration: InputDecoration(
+                labelText: context.l10n.protocolLabel,
+              ),
               items: const [
                 DropdownMenuItem(
                   value: ModelProtocol.openai,
@@ -881,28 +920,42 @@ class _ModelEditDialogState extends State<_ModelEditDialog> {
                   child: Text('newApiImageAsync'),
                 ),
               ],
-              onChanged: (value) => setState(
-                () => _protocol = value ?? ModelProtocol.openai,
-              ),
+              onChanged: (value) =>
+                  setState(() => _protocol = value ?? ModelProtocol.openai),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String?>(
-              key: const Key('model-provider-field'),
-              initialValue: providerValue,
-              decoration: InputDecoration(labelText: context.l10n.providerLabel),
-              items: [
-                DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text(context.l10n.noneOption),
-                ),
-                for (final provider in widget.providers)
-                  DropdownMenuItem<String?>(
-                    value: provider.id,
-                    child: Text(provider.name),
-                  ),
-              ],
-              onChanged: (value) => setState(
-                () => _providerIds = value == null ? [] : [value],
+            InputDecorator(
+              decoration: InputDecoration(
+                labelText: context.l10n.providerLabel,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.providers.isEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(context.l10n.noProviders),
+                    )
+                  else
+                    for (final provider in widget.providers)
+                      CheckboxListTile(
+                        key: Key('model-provider-${provider.id}'),
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(provider.name),
+                        value: _providerIds.contains(provider.id),
+                        onChanged: (selected) {
+                          setState(() {
+                            if (selected ?? false) {
+                              if (!_providerIds.contains(provider.id)) {
+                                _providerIds.add(provider.id);
+                              }
+                            } else {
+                              _providerIds.remove(provider.id);
+                            }
+                          });
+                        },
+                      ),
+                ],
               ),
             ),
           ],

@@ -441,7 +441,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       scope: 'TextChat',
       providerName: provider.name,
       modelName: model.modelId,
-      options: _requestOptions(settings.runtime.requestTimeoutSeconds),
+      options: _requestOptions(provider, settings.runtime),
     );
     // Streaming responses arrive as SSE; accumulate deltas. The buffered
     // (non-stream) body is parsed normally. We detect SSE by the data: prefix.
@@ -510,7 +510,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
       scope: 'ImageGenerate',
       providerName: provider.name,
       modelName: model.modelId,
-      options: _requestOptions(settings.runtime.requestTimeoutSeconds),
+      options: _requestOptions(provider, settings.runtime),
     );
     final image = await _parseImage(
       protocol: model.protocol,
@@ -530,9 +530,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
     required ProviderConfig provider,
     required String prompt,
   }) async {
-    final requestOptions = _requestOptions(
-      settings.runtime.requestTimeoutSeconds,
-    );
+    final requestOptions = _requestOptions(provider, settings.runtime);
     final restoredTask = services.loadAsyncTaskForNode(node.id);
     final imageInputs = await _collectImageInputs(context.inputs);
     final interval = Duration(
@@ -758,7 +756,8 @@ class CainFlowNodeExecutor implements NodeExecutor {
       provider: provider,
       model: model,
       prompt: prompt,
-      size: _stringFrom(node.data['resolution']) ?? '',
+      aspect: _stringFrom(node.data['aspect']) ?? '',
+      resolution: _stringFrom(node.data['resolution']) ?? '',
       customParams: _customParamsFrom(node.data['customParams']),
       referenceImages: imageInputs.referenceImages,
       maskImage: imageInputs.maskImage,
@@ -817,8 +816,14 @@ class CainFlowNodeExecutor implements NodeExecutor {
     );
   }
 
-  ProviderRequestOptions _requestOptions(int requestTimeoutSeconds) {
-    final timeout = requestTimeoutSeconds.clamp(1, 3600);
+  ProviderRequestOptions _requestOptions(
+    ProviderConfig provider,
+    RuntimeSettings runtime,
+  ) {
+    final configured = provider.requestTimeoutSeconds > 0
+        ? provider.requestTimeoutSeconds
+        : runtime.requestTimeoutSeconds;
+    final timeout = configured.clamp(1, 3600);
     return ProviderRequestOptions(timeout: Duration(seconds: timeout));
   }
 

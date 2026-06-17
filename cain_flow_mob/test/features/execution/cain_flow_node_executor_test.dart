@@ -120,6 +120,62 @@ void main() {
       );
     });
 
+    test('uses selected provider timeout for chat requests', () async {
+      final harness = ExecutorHarness(
+        settings: const ProviderSettings(
+          providers: [
+            ProviderConfig(
+              id: 'fast',
+              name: 'Fast',
+              protocol: ModelProtocol.openai,
+              apiKey: 'sk-fast',
+              endpoint: 'https://fast.example.com',
+              requestTimeoutSeconds: 30,
+            ),
+            ProviderConfig(
+              id: 'slow',
+              name: 'Slow',
+              protocol: ModelProtocol.openai,
+              apiKey: 'sk-slow',
+              endpoint: 'https://slow.example.com',
+              requestTimeoutSeconds: 180,
+            ),
+          ],
+          models: [
+            ModelConfig(
+              id: 'chat',
+              name: 'Chat',
+              modelId: 'gpt-4.1',
+              taskType: ModelTaskType.chat,
+              protocol: ModelProtocol.openai,
+              providerIds: ['fast', 'slow'],
+            ),
+          ],
+          runtime: RuntimeSettings(
+            requestTimeoutSeconds: 45,
+            activeChatModelId: 'chat',
+          ),
+        ),
+        responses: const [
+          FakeResponse(200, '{"choices":[{"message":{"content":"ok"}}]}'),
+        ],
+      );
+      const node = FlowNode(
+        id: 'chatNode',
+        type: 'TextChat',
+        x: 0,
+        y: 0,
+        data: {'providerId': 'slow'},
+      );
+
+      await harness.executor.execute(node, _context(inputs: {'prompt': 'hi'}));
+
+      expect(
+        harness.client.options.single.timeout,
+        const Duration(seconds: 180),
+      );
+    });
+
     test('parses Gemini candidate text', () async {
       final harness = ExecutorHarness(
         settings: const ProviderSettings(
@@ -337,36 +393,44 @@ void main() {
       expect(harness.mediaRepository.loadAll().single.id, image['assetId']);
     });
 
-    test('combines connected system and camera prompts into the image prompt', () async {
-      final harness = ExecutorHarness(
-        settings: imageSettings(),
-        responses: const [
-          FakeResponse(
-            200,
-            '{"data":[{"url":"https://cdn.example.com/a.png"}]}',
+    test(
+      'combines connected system and camera prompts into the image prompt',
+      () async {
+        final harness = ExecutorHarness(
+          settings: imageSettings(),
+          responses: const [
+            FakeResponse(
+              200,
+              '{"data":[{"url":"https://cdn.example.com/a.png"}]}',
+            ),
+          ],
+        );
+        final node = const FlowNode(
+          id: 'gen',
+          type: 'ImageGenerate',
+          x: 0,
+          y: 0,
+        );
+
+        await harness.executor.execute(
+          node,
+          _context(
+            inputs: {
+              'prompt': 'a desk lamp',
+              'system_prompt': 'keep it minimal',
+              'camera_prompt': 'three-quarter product shot',
+            },
           ),
-        ],
-      );
-      final node = const FlowNode(id: 'gen', type: 'ImageGenerate', x: 0, y: 0);
+        );
 
-      await harness.executor.execute(
-        node,
-        _context(
-          inputs: {
-            'prompt': 'a desk lamp',
-            'system_prompt': 'keep it minimal',
-            'camera_prompt': 'three-quarter product shot',
-          },
-        ),
-      );
-
-      expect(
-        harness.client.requests.single.body['prompt'],
-        'a desk lamp\n\n'
-        'System instruction:\nkeep it minimal\n\n'
-        'Camera composition instruction:\nthree-quarter product shot',
-      );
-    });
+        expect(
+          harness.client.requests.single.body['prompt'],
+          'a desk lamp\n\n'
+          'System instruction:\nkeep it minimal\n\n'
+          'Camera composition instruction:\nthree-quarter product shot',
+        );
+      },
+    );
 
     test('sends reference images, mask, and generation count', () async {
       final harness = ExecutorHarness(
@@ -501,6 +565,38 @@ void main() {
         expect(harness.client.requests.length, 3);
       },
     );
+
+    test('submits web-compatible async image request fields', () async {
+      final harness = ExecutorHarness(
+        settings: asyncSettings(),
+        responses: const [
+          FakeResponse(200, '{"id":"task-fields"}'),
+          FakeResponse(
+            200,
+            '{"status":"completed","data":{"image_url":"https://cdn/fields.png"}}',
+          ),
+        ],
+      );
+      final node = const FlowNode(
+        id: 'gen',
+        type: 'ImageGenerate',
+        x: 0,
+        y: 0,
+        data: {'aspect': '16:9', 'resolution': '1k'},
+      );
+
+      await harness.executor.execute(
+        node,
+        _context(inputs: const {'prompt': 'a skyline'}),
+      );
+
+      final body = harness.client.requests.first.body;
+      expect(body['model'], 'flux-async');
+      expect(body['prompt'], 'a skyline');
+      expect(body['aspect_ratio'], '16:9');
+      expect(body['resolution'], '1k');
+      expect(body.containsKey('size'), isFalse);
+    });
 
     test('propagates request timeout to submit and poll requests', () async {
       final harness = ExecutorHarness(
