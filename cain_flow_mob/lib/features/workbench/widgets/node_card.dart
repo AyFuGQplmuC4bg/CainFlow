@@ -85,7 +85,6 @@ class NodeCard extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.onMove,
-    this.canvasZoom = 1,
     this.onOpen,
     this.onPortTap,
     this.pendingFromPort,
@@ -99,7 +98,6 @@ class NodeCard extends StatelessWidget {
   final bool selected;
   final VoidCallback onSelect;
   final ValueChanged<NodeOffset> onMove;
-  final double canvasZoom;
 
   /// Tapping the node body selects it and opens its editor (param sheet).
   final VoidCallback? onOpen;
@@ -147,8 +145,7 @@ class NodeCard extends StatelessWidget {
       },
       onPanStart: (_) => onSelect(),
       onPanUpdate: (details) {
-        final zoom = canvasZoom <= 0 ? 1.0 : canvasZoom;
-        onMove(NodeOffset(details.delta.dx / zoom, details.delta.dy / zoom));
+        onMove(NodeOffset(details.delta.dx, details.delta.dy));
       },
       child: Stack(
         clipBehavior: Clip.none,

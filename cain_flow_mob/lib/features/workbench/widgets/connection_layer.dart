@@ -11,6 +11,7 @@ class ConnectionLayer extends StatelessWidget {
     required this.nodes,
     required this.connections,
     this.imageOutputs = const {},
+    this.panOffset = const NodeOffset(0, 0),
     this.zoom = 1,
   });
 
@@ -19,6 +20,9 @@ class ConnectionLayer extends StatelessWidget {
 
   /// Node ids that currently show a thumbnail (taller cards), so anchors match.
   final Set<String> imageOutputs;
+
+  /// Canvas pan in viewport pixels.
+  final NodeOffset panOffset;
 
   /// Canvas zoom; card dimensions are scaled by this when anchoring.
   final double zoom;
@@ -30,6 +34,7 @@ class ConnectionLayer extends StatelessWidget {
         nodes: nodes,
         connections: connections,
         imageOutputs: imageOutputs,
+        panOffset: panOffset,
         zoom: zoom,
         textColor: CainTokens.signalText,
         imageColor: CainTokens.signalImage,
@@ -43,6 +48,7 @@ class _ConnectionPainter extends CustomPainter {
     required this.nodes,
     required this.connections,
     required this.imageOutputs,
+    required this.panOffset,
     required this.zoom,
     required this.textColor,
     required this.imageColor,
@@ -51,6 +57,7 @@ class _ConnectionPainter extends CustomPainter {
   final List<WorkbenchNode> nodes;
   final List<WorkbenchConnection> connections;
   final Set<String> imageOutputs;
+  final NodeOffset panOffset;
   final double zoom;
   final Color textColor;
   final Color imageColor;
@@ -71,8 +78,8 @@ class _ConnectionPainter extends CustomPainter {
       final toIndex = _portIndex(toDef?.inputPorts, connection.toPort);
 
       final start = Offset(
-        from.x + workbenchNodeSize.width * zoom,
-        from.y +
+        panOffset.dx + from.x * zoom + workbenchNodeSize.width * zoom,
+        panOffset.dy + from.y * zoom +
             portAnchorY(
                   fromDef,
                   isOutput: true,
@@ -82,8 +89,8 @@ class _ConnectionPainter extends CustomPainter {
                 zoom,
       );
       final end = Offset(
-        to.x,
-        to.y +
+        panOffset.dx + to.x * zoom,
+        panOffset.dy + to.y * zoom +
             portAnchorY(
                   toDef,
                   isOutput: false,
@@ -143,6 +150,8 @@ class _ConnectionPainter extends CustomPainter {
     return oldDelegate.nodes != nodes ||
         oldDelegate.connections != connections ||
         oldDelegate.imageOutputs != imageOutputs ||
+        oldDelegate.panOffset != panOffset ||
+        oldDelegate.zoom != zoom ||
         oldDelegate.textColor != textColor ||
         oldDelegate.imageColor != imageColor;
   }

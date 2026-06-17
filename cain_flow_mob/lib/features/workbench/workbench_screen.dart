@@ -1236,6 +1236,8 @@ class _CanvasStageState extends State<_CanvasStage> {
   double? _pinchStartDistance;
   double? _pinchStartZoom;
 
+  bool get _pinchActive => _isMobilePlatform && _touchPoints.length > 1;
+
   bool get _isMobilePlatform {
     return switch (defaultTargetPlatform) {
       TargetPlatform.android || TargetPlatform.iOS => true,
@@ -1316,16 +1318,7 @@ class _CanvasStageState extends State<_CanvasStage> {
     final state = workbenchSignals;
     final zoom = state.zoom.value;
     final pan = state.panOffset.value;
-    final displayNodes = [
-      for (final node in state.nodes.value)
-        WorkbenchNode(
-          id: node.id,
-          type: node.type,
-          title: node.title,
-          x: pan.dx + node.x * zoom,
-          y: pan.dy + node.y * zoom,
-        ),
-    ];
+    final displayNodes = state.nodes.value;
 
     return Listener(
       onPointerSignal: (event) => _handlePointerSignal(event, state),
@@ -1347,7 +1340,7 @@ class _CanvasStageState extends State<_CanvasStage> {
                 },
                 onLongPress: () => _showNodePicker(context),
                 onPanUpdate: (details) {
-                  if (_isMobilePlatform && _touchPoints.length > 1) return;
+                  if (_pinchActive) return;
                   state.moveCanvas(
                     NodeOffset(details.delta.dx, details.delta.dy),
                   );
@@ -1355,6 +1348,7 @@ class _CanvasStageState extends State<_CanvasStage> {
                 child: ConnectionLayer(
                   nodes: displayNodes,
                   connections: state.connections.value,
+                  panOffset: pan,
                   zoom: zoom,
                   imageOutputs: executionSignals.imageOutputs.value.keys
                       .toSet(),
@@ -1363,15 +1357,14 @@ class _CanvasStageState extends State<_CanvasStage> {
             ),
             for (final node in displayNodes)
               Positioned(
-                left: node.x,
-                top: node.y,
+                left: pan.dx + node.x * zoom,
+                top: pan.dy + node.y * zoom,
                 child: Transform.scale(
                   scale: zoom,
                   alignment: Alignment.topLeft,
                   child: NodeCard(
                     node: node,
                     definition: nodeRegistry.get(node.type),
-                    canvasZoom: zoom,
                     selected: state.selectedNodeId.value == node.id,
                     imagePayload: _cardImagePayload(node),
                     runState: executionSignals.nodeStates.value[node.id]?.state,
@@ -1385,7 +1378,7 @@ class _CanvasStageState extends State<_CanvasStage> {
                     onPortTap: (port, isOutput) =>
                         _handlePortTap(context, node.id, port, isOutput),
                     onMove: (offset) {
-                      if (_isMobilePlatform && _touchPoints.length > 1) return;
+                      if (_pinchActive) return;
                       state.moveNode(node.id, offset);
                     },
                   ),
