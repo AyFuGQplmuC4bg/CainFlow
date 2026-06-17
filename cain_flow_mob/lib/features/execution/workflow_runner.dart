@@ -1,5 +1,6 @@
 import '../../core/models/flow_node.dart';
 import '../../core/models/workflow_document.dart';
+import '../../core/network/provider_client.dart';
 import 'execution_plan.dart';
 import 'execution_signals.dart';
 import 'node_executor.dart';
@@ -145,16 +146,17 @@ class WorkflowRunner {
       for (final outcome in batch) {
         pending.remove(outcome.nodeId);
         if (outcome.error != null) {
+          final message = _errorMessage(outcome.error!);
           signals.markNode(outcome.nodeId, NodeRunState.failed,
-              message: outcome.error.toString());
+              message: message);
           for (final id in pending) {
             signals.markNode(id, NodeRunState.skipped);
           }
-          signals.markWorkflowFailed(outcome.error.toString());
+          signals.markWorkflowFailed(message);
           return WorkflowRunResult(
             state: WorkflowExecutionState.failed,
             results: Map.unmodifiable(results),
-            error: outcome.error.toString(),
+            error: message,
           );
         }
         results[outcome.nodeId] = outcome.result!;
@@ -203,7 +205,7 @@ class WorkflowRunner {
     Map<String, NodeExecutionResult> results,
     Object error,
   ) {
-    final message = error.toString();
+    final message = _errorMessage(error);
     signals.markNode(nodeId, NodeRunState.failed, message: message);
     _markRemainingSkipped(plan, nodeId);
     signals.markWorkflowFailed(message);
@@ -212,6 +214,13 @@ class WorkflowRunner {
       results: Map.unmodifiable(results),
       error: message,
     );
+  }
+
+  String _errorMessage(Object error) {
+    if (error is ProviderTransportException) {
+      return error.error.message;
+    }
+    return error.toString();
   }
 
   void _markRemainingSkipped(ExecutionPlan plan, String afterNodeId) {

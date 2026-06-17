@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../settings/provider_settings.dart';
 
 class ProviderRequest {
@@ -6,12 +8,14 @@ class ProviderRequest {
     required this.method,
     required this.headers,
     required this.body,
+    this.multipart = const [],
   });
 
   final String url;
   final String method;
   final Map<String, String> headers;
   final Map<String, dynamic> body;
+  final List<ProviderMultipartPart> multipart;
 
   String get redactedUrl => redactUrlSecrets(url);
 
@@ -20,6 +24,20 @@ class ProviderRequest {
       for (final entry in headers.entries) entry.key: _redactHeader(entry),
     };
   }
+}
+
+class ProviderMultipartPart {
+  const ProviderMultipartPart({
+    required this.field,
+    required this.filename,
+    required this.contentType,
+    required this.bytes,
+  });
+
+  final String field;
+  final String filename;
+  final String contentType;
+  final List<int> bytes;
 }
 
 abstract final class ProviderRequestBuilder {
@@ -145,21 +163,38 @@ ProviderRequest _buildOpenAiImageRequest({
   String maskImage = '',
 }) {
   final useEdits = referenceImages.isNotEmpty || maskImage.trim().isNotEmpty;
+  final multipart = <ProviderMultipartPart>[];
   final body = <String, dynamic>{
     'model': model.modelId,
     'prompt': prompt,
     'n': generationCount < 1 ? 1 : generationCount,
-    if (referenceImages.isNotEmpty)
-      ...(useEdits
-          ? {'reference_images': referenceImages}
-          : {'image_urls': referenceImages}),
+    if (referenceImages.isNotEmpty && !useEdits) 'image_urls': referenceImages,
     ...customParams,
   };
   if (_isOpenAiImageSize(resolution)) body['size'] = resolution;
   if (_isOpenAiImageQuality(quality)) body['quality'] = quality;
   if (_isOpenAiImageModeration(moderation)) body['moderation'] = moderation;
   if (_isOpenAiImageBackground(background)) body['background'] = background;
-  if (maskImage.trim().isNotEmpty) body['mask'] = maskImage.trim();
+  if (useEdits) {
+    for (var index = 0; index < referenceImages.length; index += 1) {
+      multipart.add(
+        _multipartImagePart(
+          field: 'image',
+          value: referenceImages[index],
+          fallbackName: 'reference_${index + 1}',
+        ),
+      );
+    }
+    if (maskImage.trim().isNotEmpty) {
+      multipart.add(
+        _multipartImagePart(
+          field: 'mask',
+          value: maskImage.trim(),
+          fallbackName: 'mask',
+        ),
+      );
+    }
+  }
 
   return ProviderRequest(
     url: _resolveOpenAiUrl(
@@ -167,8 +202,9 @@ ProviderRequest _buildOpenAiImageRequest({
       useEdits ? '/images/edits' : '/images/generations',
     ),
     method: 'POST',
-    headers: _openAiHeaders(provider),
+    headers: useEdits ? _multipartHeaders(provider) : _openAiHeaders(provider),
     body: body,
+    multipart: multipart,
   );
 }
 
@@ -262,6 +298,69 @@ Map<String, String> _openAiHeaders(ProviderConfig provider) {
     if (provider.apiKey.trim().isNotEmpty)
       'Authorization': 'Bearer ${provider.apiKey.trim()}',
   };
+}
+
+Map<String, String> _multipartHeaders(ProviderConfig provider) {
+  return {
+    'Accept': 'application/json',
+    if (provider.apiKey.trim().isNotEmpty)
+      'Authorization': 'Bearer ${provider.apiKey.trim()}',
+  };
+}
+
+ProviderMultipartPart _multipartImagePart({
+  required String field,
+  required String value,
+  required String fallbackName,
+}) {
+  final trimmed = value.trim();
+  final match = RegExp(r'^data:([^;]+);base64,(.+)$', caseSensitive: false)
+      .firstMatch(trimmed);
+  if (match != null) {
+    final contentType = match.group(1) ?? 'image/png';
+    final bytes = base64Decode(match.group(2) ?? '');
+    return ProviderMultipartPart(
+      field: field,
+      filename: '$fallbackName${_extensionForMimeType(contentType)}',
+      contentType: contentType,
+      bytes: bytes,
+    );
+  }
+
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return ProviderMultipartPart(
+      field: field,
+      filename: '$fallbackName.url',
+      contentType: 'text/uri-list',
+      bytes: utf8.encode(trimmed),
+    );
+  }
+
+  final bytes = base64Decode(_stripDataUri(trimmed));
+  return ProviderMultipartPart(
+    field: field,
+    filename: '$fallbackName.png',
+    contentType: 'image/png',
+    bytes: bytes,
+  );
+}
+
+String _extensionForMimeType(String contentType) {
+  return switch (contentType.toLowerCase()) {
+    'image/jpeg' => '.jpg',
+    'image/webp' => '.webp',
+    'image/gif' => '.gif',
+    _ => '.png',
+  };
+}
+
+String _stripDataUri(String value) {
+  final trimmed = value.trim();
+  final index = trimmed.indexOf(',');
+  if (trimmed.startsWith('data:') && index >= 0) {
+    return trimmed.substring(index + 1);
+  }
+  return trimmed;
 }
 
 Map<String, String> _jsonHeaders() {

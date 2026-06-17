@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../../core/models/flow_node.dart';
 import '../../core/network/provider_client.dart';
+import '../../core/network/provider_error.dart';
 import '../background/background_job_repository.dart';
 import '../camera/camera_prompt.dart';
 import '../logs/log_signals.dart';
@@ -708,9 +709,10 @@ class CainFlowNodeExecutor implements NodeExecutor {
       );
       if (!response.isSuccess) {
         final error = response.toError(request);
+        final formattedMessage = formatProviderErrorMessage(error);
         services.logs.add(
           LogLevel.error,
-          '$scope failed (${error.statusCode} ${error.category.name}): ${error.safeUrl}',
+          '$scope failed (${error.statusCode} ${error.category.name}): $formattedMessage | url=${error.safeUrl}${error.rawBodyPreview.isEmpty ? '' : ' | body=${error.rawBodyPreview}'}',
           scope: scope,
         );
         services.statistics?.record(
@@ -718,7 +720,16 @@ class CainFlowNodeExecutor implements NodeExecutor {
           model: modelName,
           success: false,
         );
-        throw ProviderTransportException(error);
+        throw ProviderTransportException(
+          ProviderError(
+            category: error.category,
+            statusCode: error.statusCode,
+            safeUrl: error.safeUrl,
+            safeHeaders: error.safeHeaders,
+            message: formattedMessage,
+            rawBodyPreview: error.rawBodyPreview,
+          ),
+        );
       }
       services.logs.add(LogLevel.info, '$scope succeeded', scope: scope);
       services.statistics?.record(provider: providerName, model: modelName);
@@ -726,7 +737,7 @@ class CainFlowNodeExecutor implements NodeExecutor {
     } on ProviderTransportException catch (e) {
       services.logs.add(
         LogLevel.error,
-        '$scope failed (${e.error.category.name}): ${e.error.message}',
+        '$scope failed (${e.error.category.name}): ${e.error.message}${e.error.rawBodyPreview.isEmpty ? '' : ' | body=${e.error.rawBodyPreview}'}',
         scope: scope,
       );
       rethrow;

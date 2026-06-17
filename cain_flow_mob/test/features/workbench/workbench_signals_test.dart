@@ -21,6 +21,42 @@ void main() {
     expect(after.y, before.y - 8);
   });
 
+  test('moveNodeByViewportDelta compensates for canvas zoom', () {
+    final state = WorkbenchSignals();
+    state.zoom.value = 2;
+
+    state.moveNodeByViewportDelta('node_image_generate', const NodeOffset(20, 10));
+
+    final node = state.nodes.value.firstWhere(
+      (n) => n.id == 'node_image_generate',
+    );
+    expect(node.x, 370);
+    expect(node.y, 101);
+  });
+
+  test('viewport drag compensation matches displayed node coordinates', () {
+    final state = WorkbenchSignals();
+    state.panOffset.value = const NodeOffset(40, -30);
+    state.zoom.value = 0.5;
+
+    final before = state.nodes.value.firstWhere(
+      (n) => n.id == 'node_image_generate',
+    );
+    final beforeDisplayX = state.panOffset.value.dx + before.x * state.zoom.value;
+    final beforeDisplayY = state.panOffset.value.dy + before.y * state.zoom.value;
+
+    state.moveNodeByViewportDelta('node_image_generate', const NodeOffset(15, 20));
+
+    final after = state.nodes.value.firstWhere(
+      (n) => n.id == 'node_image_generate',
+    );
+    final afterDisplayX = state.panOffset.value.dx + after.x * state.zoom.value;
+    final afterDisplayY = state.panOffset.value.dy + after.y * state.zoom.value;
+
+    expect(afterDisplayX, beforeDisplayX + 15);
+    expect(afterDisplayY, beforeDisplayY + 20);
+  });
+
   test('node data round-trips through JSON and survives moveBy', () {
     const node = WorkbenchNode(
       id: 'n1',

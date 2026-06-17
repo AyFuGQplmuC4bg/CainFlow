@@ -155,7 +155,14 @@ class DartIoProviderClient implements ProviderClient {
     // "Content size exceeds specified contentLength".
     final method = request.method.toUpperCase();
     final bodyless = method == 'GET' || method == 'HEAD' || method == 'DELETE';
-    if (!bodyless && request.body.isNotEmpty) {
+    if (!bodyless && request.multipart.isNotEmpty) {
+      final boundary = 'cainflow-${DateTime.now().microsecondsSinceEpoch}';
+      httpRequest.headers.set(
+        'Content-Type',
+        'multipart/form-data; boundary=$boundary',
+      );
+      _writeMultipartBody(httpRequest, request, boundary);
+    } else if (!bodyless && request.body.isNotEmpty) {
       final payload = utf8.encode(jsonEncode(request.body));
       httpRequest.add(payload);
     }
@@ -191,5 +198,35 @@ class DartIoProviderClient implements ProviderClient {
       message: message,
       rawBodyPreview: '',
     );
+  }
+
+  void _writeMultipartBody(
+    HttpClientRequest httpRequest,
+    ProviderRequest request,
+    String boundary,
+  ) {
+    final separator = '--$boundary\r\n';
+    for (final entry in request.body.entries) {
+      httpRequest.add(
+        utf8.encode(
+          '$separator'
+          'Content-Disposition: form-data; name="${entry.key}"\r\n\r\n'
+          '${entry.value}\r\n',
+        ),
+      );
+    }
+    for (final part in request.multipart) {
+      httpRequest.add(
+        utf8.encode(
+          '$separator'
+          'Content-Disposition: form-data; name="${part.field}"; '
+          'filename="${part.filename}"\r\n'
+          'Content-Type: ${part.contentType}\r\n\r\n',
+        ),
+      );
+      httpRequest.add(part.bytes);
+      httpRequest.add(utf8.encode('\r\n'));
+    }
+    httpRequest.add(utf8.encode('--$boundary--\r\n'));
   }
 }

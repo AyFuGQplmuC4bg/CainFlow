@@ -102,18 +102,28 @@ void main() {
       model: imageModel,
       prompt: 'A small desk lamp',
       referenceImages: const ['https://cdn/a.png'],
-      maskImage: 'data:image/png;base64,abc',
+      maskImage: 'data:image/png;base64,AAAA',
       moderation: 'auto',
       background: 'transparent',
       generationCount: 2,
     );
 
     expect(request.url, 'https://api.example.com/v1/images/edits');
-    expect(request.body['reference_images'], ['https://cdn/a.png']);
-    expect(request.body['mask'], 'data:image/png;base64,abc');
+    expect(request.body['model'], 'gpt-image-2');
+    expect(request.body['prompt'], 'A small desk lamp');
     expect(request.body['moderation'], 'auto');
     expect(request.body['background'], 'transparent');
     expect(request.body['n'], 2);
+    expect(request.headers.containsKey('Content-Type'), isFalse);
+    expect(request.multipart, hasLength(2));
+    expect(request.multipart.first.field, 'image');
+    expect(request.multipart.first.contentType, 'text/uri-list');
+    expect(
+      String.fromCharCodes(request.multipart.first.bytes),
+      'https://cdn/a.png',
+    );
+    expect(request.multipart.last.field, 'mask');
+    expect(request.multipart.last.contentType, 'image/png');
   });
 
   test('ignores unsupported aspect and search at request-builder level', () {

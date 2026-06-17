@@ -1371,6 +1371,7 @@ class _CanvasStageState extends State<_CanvasStage> {
                   child: NodeCard(
                     node: node,
                     definition: nodeRegistry.get(node.type),
+                    canvasZoom: zoom,
                     selected: state.selectedNodeId.value == node.id,
                     imagePayload: _cardImagePayload(node),
                     runState: executionSignals.nodeStates.value[node.id]?.state,
@@ -1385,10 +1386,7 @@ class _CanvasStageState extends State<_CanvasStage> {
                         _handlePortTap(context, node.id, port, isOutput),
                     onMove: (offset) {
                       if (_isMobilePlatform && _touchPoints.length > 1) return;
-                      state.moveNode(
-                        node.id,
-                        NodeOffset(offset.dx / zoom, offset.dy / zoom),
-                      );
+                      state.moveNode(node.id, offset);
                     },
                   ),
                 ),

@@ -409,11 +409,26 @@ void main() {
         harness.client.requests.single.url,
         'https://api.example.com/v1/images/edits',
       );
-      expect(body['reference_images'], ['https://cdn.example.com/ref.png']);
-      expect(body['mask'], 'https://cdn.example.com/mask.png');
+      expect(body['model'], isNotEmpty);
+      expect(body['prompt'], 'a cat');
       expect(body['n'], 2);
       expect(body['moderation'], 'auto');
       expect(body['background'], 'transparent');
+      expect(harness.client.requests.single.multipart, hasLength(2));
+      expect(harness.client.requests.single.multipart.first.field, 'image');
+      expect(
+        String.fromCharCodes(
+          harness.client.requests.single.multipart.first.bytes,
+        ),
+        'https://cdn.example.com/ref.png',
+      );
+      expect(harness.client.requests.single.multipart.last.field, 'mask');
+      expect(
+        String.fromCharCodes(
+          harness.client.requests.single.multipart.last.bytes,
+        ),
+        'https://cdn.example.com/mask.png',
+      );
 
       final image = result.outputs['image'] as Map;
       expect(image['kind'], 'images');

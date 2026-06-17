@@ -225,6 +225,11 @@ class WorkbenchSignals {
     ];
   }
 
+  void moveNodeByViewportDelta(String nodeId, NodeOffset delta) {
+    final scale = zoom.value <= 0 ? 1.0 : zoom.value;
+    moveNode(nodeId, NodeOffset(delta.dx / scale, delta.dy / scale));
+  }
+
   /// Replaces the parameter map of [nodeId] with [data].
   void updateNodeData(String nodeId, Map<String, dynamic> data) {
     _recordMutation();
