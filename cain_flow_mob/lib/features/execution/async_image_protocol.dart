@@ -2,14 +2,15 @@ import '../settings/provider_settings.dart';
 import 'provider_request_builder.dart';
 
 /// Pure helpers for the NewAPI-style async image protocol:
-/// submit a generation task, poll its status, then extract the result URL.
+/// submit a video-backed image task, poll its status, then extract the result
+/// URL.
 ///
 /// Field shapes mirror the web app's `provider-request-utils.js` extractors so
 /// the same providers work across both clients.
 abstract final class AsyncImageProtocol {
   /// Builds the task-submission request (POST). Endpoint resolution reuses the
-  /// OpenAI-style base; the async submit path is `/v1/images/generations`
-  /// unless the provider endpoint already targets a specific path.
+  /// OpenAI-style base; the async submit path is `/v1/videos` unless the
+  /// provider endpoint already targets a specific path.
   static ProviderRequest buildSubmitRequest({
     required ProviderConfig provider,
     required ModelConfig model,
@@ -90,9 +91,12 @@ abstract final class AsyncImageProtocol {
     return _firstString([
       source['image_url'],
       source['url'],
+      source['video_url'],
       source['content_url'],
       _firstOfList(source['image_urls']),
       _firstOfList(source['result_urls']),
+      _firstOfList(_mapValue(source['metadata'], 'result_urls')),
+      _firstOfList(_mapValue(source['metadata'], 'image_urls')),
     ]);
   }
 
@@ -100,16 +104,16 @@ abstract final class AsyncImageProtocol {
     final endpoint = normalizeProviderEndpoint(provider.endpoint);
     if (!provider.autoComplete) return endpoint;
     final base = endpoint.replaceAll(RegExp(r'/+$'), '');
-    if (base.contains('/images/') || base.contains('/generations')) {
+    if (base.contains('/videos')) {
       return base;
     }
     final withVersion = RegExp(r'/v\d+$').hasMatch(base) ? base : '$base/v1';
-    return '$withVersion/images/generations';
+    return '$withVersion/videos';
   }
 
   static String _pollBase(ProviderConfig provider) {
     // The poll endpoint appends the task id to the submit path, e.g.
-    // POST .../images/generations -> GET .../images/generations/{taskId}.
+    // POST .../videos -> GET .../videos/{taskId}.
     return _submitUrl(provider);
   }
 
@@ -158,5 +162,10 @@ String? _firstOfList(Object? value) {
     final first = value.first;
     if (first is String) return first;
   }
+  return null;
+}
+
+Object? _mapValue(Object? value, String key) {
+  if (value is Map) return value[key];
   return null;
 }

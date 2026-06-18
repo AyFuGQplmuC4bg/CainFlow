@@ -563,6 +563,8 @@ void main() {
         expect(image['url'], 'https://cdn/x.png');
         // 1 submit + 2 polls.
         expect(harness.client.requests.length, 3);
+        expect(harness.client.requests.first.url, 'https://api.example.com/v1/videos');
+        expect(harness.client.requests.last.url, 'https://api.example.com/v1/videos/task-1');
       },
     );
 
@@ -638,7 +640,7 @@ void main() {
         asyncTask: BackgroundAsyncTaskMetadata(
           taskId: 'task-resume',
           provider: 'prov',
-          pollUrl: 'https://api.example.com/v1/images/generations/task-resume',
+          pollUrl: 'https://api.example.com/v1/videos/task-resume',
           state: 'submitted',
           nodeId: 'gen',
           pollAttempts: 1,
@@ -663,6 +665,7 @@ void main() {
       expect(image['url'], 'https://cdn/resume.png');
       expect(harness.client.requests.length, 1);
       expect(harness.client.requests.single.method, 'GET');
+      expect(harness.client.requests.single.url, 'https://api.example.com/v1/videos/task-resume');
 
       final snapshot = harness.backgroundCoordinator.loadJob('job-resume');
       expect(snapshot, isNotNull);

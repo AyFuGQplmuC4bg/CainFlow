@@ -20,7 +20,7 @@ void main() {
   );
 
   group('request building', () {
-    test('submit targets the images generations path with auth header', () {
+    test('submit targets the NewAPI videos path with auth header', () {
       final req = AsyncImageProtocol.buildSubmitRequest(
         provider: provider,
         model: model,
@@ -29,7 +29,7 @@ void main() {
         resolution: '1k',
       );
       expect(req.method, 'POST');
-      expect(req.url, 'https://api.example.com/v1/images/generations');
+      expect(req.url, 'https://api.example.com/v1/videos');
       expect(req.headers['Authorization'], 'Bearer sk-secret');
       expect(req.body['prompt'], 'a fox');
       expect(req.body['aspect_ratio'], '1:1');
@@ -52,7 +52,7 @@ void main() {
       final req =
           AsyncImageProtocol.buildPollRequest(provider: provider, taskId: 't123');
       expect(req.method, 'GET');
-      expect(req.url, 'https://api.example.com/v1/images/generations/t123');
+      expect(req.url, 'https://api.example.com/v1/videos/t123');
     });
   });
 
@@ -101,6 +101,22 @@ void main() {
           },
         }),
         'https://x/b.png',
+      );
+      expect(
+        AsyncImageProtocol.extractResultUrl({
+          'data': {'video_url': 'https://x/c.png'},
+        }),
+        'https://x/c.png',
+      );
+      expect(
+        AsyncImageProtocol.extractResultUrl({
+          'data': {
+            'metadata': {
+              'image_urls': ['https://x/d.png'],
+            },
+          },
+        }),
+        'https://x/d.png',
       );
     });
   });
