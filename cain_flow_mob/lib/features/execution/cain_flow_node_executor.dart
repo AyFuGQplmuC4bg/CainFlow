@@ -441,7 +441,11 @@ class CainFlowNodeExecutor implements NodeExecutor {
       scope: 'TextChat',
       providerName: provider.name,
       modelName: model.modelId,
-      options: _requestOptions(provider, settings.runtime),
+      options: _requestOptions(
+        provider,
+        settings.runtime,
+        isCanceled: context.isCanceled,
+      ),
     );
     // Streaming responses arrive as SSE; accumulate deltas. The buffered
     // (non-stream) body is parsed normally. We detect SSE by the data: prefix.
@@ -510,7 +514,11 @@ class CainFlowNodeExecutor implements NodeExecutor {
       scope: 'ImageGenerate',
       providerName: provider.name,
       modelName: model.modelId,
-      options: _requestOptions(provider, settings.runtime),
+      options: _requestOptions(
+        provider,
+        settings.runtime,
+        isCanceled: context.isCanceled,
+      ),
     );
     final image = await _parseImage(
       protocol: model.protocol,
@@ -530,7 +538,11 @@ class CainFlowNodeExecutor implements NodeExecutor {
     required ProviderConfig provider,
     required String prompt,
   }) async {
-    final requestOptions = _requestOptions(provider, settings.runtime);
+    final requestOptions = _requestOptions(
+      provider,
+      settings.runtime,
+      isCanceled: context.isCanceled,
+    );
     final restoredTask = services.loadAsyncTaskForNode(node.id);
     final imageInputs = await _collectImageInputs(context.inputs);
     final interval = Duration(
@@ -818,13 +830,17 @@ class CainFlowNodeExecutor implements NodeExecutor {
 
   ProviderRequestOptions _requestOptions(
     ProviderConfig provider,
-    RuntimeSettings runtime,
-  ) {
+    RuntimeSettings runtime, {
+    required bool Function() isCanceled,
+  }) {
     final configured = provider.requestTimeoutSeconds > 0
         ? provider.requestTimeoutSeconds
         : runtime.requestTimeoutSeconds;
     final timeout = configured.clamp(1, 3600);
-    return ProviderRequestOptions(timeout: Duration(seconds: timeout));
+    return ProviderRequestOptions(
+      timeout: Duration(seconds: timeout),
+      cancellationToken: ProviderCancellationSignal(isCanceled),
+    );
   }
 
   // --- Resolution helpers --------------------------------------------------

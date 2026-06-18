@@ -35,6 +35,28 @@ class ProviderCancellationToken {
   }
 }
 
+class ProviderCancellationSignal implements ProviderCancellationToken {
+  ProviderCancellationSignal(this._isCanceled);
+
+  final bool Function() _isCanceled;
+  bool _canceled = false;
+
+  @override
+  bool get isCanceled => _canceled || _isCanceled();
+
+  @override
+  void cancel() {
+    _canceled = true;
+  }
+
+  @override
+  void throwIfCanceled() {
+    if (isCanceled) {
+      throw const ProviderRequestCanceled();
+    }
+  }
+}
+
 class ProviderRequestCanceled implements Exception {
   const ProviderRequestCanceled();
 
@@ -105,7 +127,11 @@ class DartIoProviderClient implements ProviderClient {
     } on TimeoutException {
       client.close(force: true);
       throw ProviderTransportException(
-        _transportError(request, ProviderErrorCategory.timeout, 'Request timed out'),
+        _transportError(
+          request,
+          ProviderErrorCategory.timeout,
+          'Request timed out',
+        ),
       );
     } on ProviderRequestCanceled {
       client.close(force: true);

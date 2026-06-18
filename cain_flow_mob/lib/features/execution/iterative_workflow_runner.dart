@@ -1,4 +1,5 @@
 import '../../core/models/workflow_document.dart';
+import '../../core/network/provider_client.dart';
 import 'execution_signals.dart';
 import 'node_executor.dart';
 
@@ -60,9 +61,7 @@ class IterativeWorkflowRunner {
     final results = <String, NodeExecutionResult>{};
 
     // Seed: nodes with no incoming connections are ready immediately.
-    final hasIncoming = {
-      for (final c in connections) c.to.nodeId,
-    };
+    final hasIncoming = {for (final c in connections) c.to.nodeId};
     final queue = <String>[
       for (final id in nodes.keys)
         if (!hasIncoming.contains(id)) id,
@@ -90,7 +89,8 @@ class IterativeWorkflowRunner {
       final nodeId = queue.removeAt(0);
       final node = nodes[nodeId]!;
       final incoming = [
-        for (final c in connections) if (c.to.nodeId == nodeId) c,
+        for (final c in connections)
+          if (c.to.nodeId == nodeId) c,
       ];
 
       // Gather inputs from live upstream port values.
@@ -110,7 +110,11 @@ class IterativeWorkflowRunner {
         final result = await executor.execute(node, context);
         results[nodeId] = result;
         portValues[nodeId] = Map<String, dynamic>.from(result.outputs);
-        signals.markNode(nodeId, NodeRunState.completed, message: result.message);
+        signals.markNode(
+          nodeId,
+          NodeRunState.completed,
+          message: result.message,
+        );
 
         // Enqueue downstream nodes reachable via ports that produced a value.
         for (final c in connections) {
@@ -119,6 +123,13 @@ class IterativeWorkflowRunner {
           if (result.outputs[c.from.port] == null) continue;
           if (!queue.contains(c.to.nodeId)) queue.add(c.to.nodeId);
         }
+      } on ProviderRequestCanceled {
+        signals.markNode(nodeId, NodeRunState.skipped);
+        signals.markWorkflowCanceled();
+        return IterativeRunResult(
+          state: WorkflowExecutionState.canceled,
+          results: Map.unmodifiable(results),
+        );
       } catch (error) {
         final msg = error.toString();
         signals.markNode(nodeId, NodeRunState.failed, message: msg);

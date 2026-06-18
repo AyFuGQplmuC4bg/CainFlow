@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cain_flow_mob/core/models/flow_connection.dart';
 import 'package:cain_flow_mob/core/models/flow_node.dart';
 import 'package:cain_flow_mob/core/models/workflow_document.dart';
+import 'package:cain_flow_mob/core/network/provider_client.dart';
 import 'package:cain_flow_mob/features/execution/execution_signals.dart';
 import 'package:cain_flow_mob/features/execution/node_executor.dart';
 import 'package:cain_flow_mob/features/execution/workflow_runner.dart';
@@ -110,6 +111,27 @@ void main() {
     expect(signals.workflowState.value, WorkflowExecutionState.canceled);
     expect(signals.nodeStates.value['a']?.state, NodeRunState.skipped);
     expect(signals.nodeStates.value['b']?.state, NodeRunState.skipped);
+  });
+
+  test('treats provider request cancellation as canceled', () async {
+    final signals = ExecutionSignals();
+    final executor = _FakeNodeExecutor(
+      onExecute: (node, context) async {
+        throw const ProviderRequestCanceled();
+      },
+    );
+    final runner = WorkflowRunner(executor: executor, signals: signals);
+
+    final result = await runner.run(
+      _workflow(
+        nodes: const [FlowNode(id: 'a', type: 'TextChat', x: 0, y: 0)],
+        connections: const [],
+      ),
+    );
+
+    expect(result.state, WorkflowExecutionState.canceled);
+    expect(signals.workflowState.value, WorkflowExecutionState.canceled);
+    expect(signals.nodeStates.value['a']?.state, NodeRunState.skipped);
   });
 
   group('concurrent execution', () {

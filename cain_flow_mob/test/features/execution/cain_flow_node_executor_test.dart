@@ -120,6 +120,29 @@ void main() {
       );
     });
 
+    test('passes cancellation token to provider requests', () async {
+      final harness = ExecutorHarness(
+        settings: chatSettings(),
+        responses: const [FakeResponse(200, '{}')],
+      );
+      final node = const FlowNode(id: 'chatNode', type: 'TextChat', x: 0, y: 0);
+      var canceled = false;
+
+      await harness.executor.execute(
+        node,
+        NodeExecutionContext(
+          inputs: const {'prompt': 'say hi'},
+          previousResults: const {},
+          isCanceled: () => canceled,
+        ),
+      );
+      canceled = true;
+      expect(
+        harness.client.options.single.cancellationToken!.throwIfCanceled,
+        throwsA(isA<ProviderRequestCanceled>()),
+      );
+    });
+
     test('uses selected provider timeout for chat requests', () async {
       final harness = ExecutorHarness(
         settings: const ProviderSettings(
@@ -563,8 +586,14 @@ void main() {
         expect(image['url'], 'https://cdn/x.png');
         // 1 submit + 2 polls.
         expect(harness.client.requests.length, 3);
-        expect(harness.client.requests.first.url, 'https://api.example.com/v1/videos');
-        expect(harness.client.requests.last.url, 'https://api.example.com/v1/videos/task-1');
+        expect(
+          harness.client.requests.first.url,
+          'https://api.example.com/v1/videos',
+        );
+        expect(
+          harness.client.requests.last.url,
+          'https://api.example.com/v1/videos/task-1',
+        );
       },
     );
 
@@ -665,7 +694,10 @@ void main() {
       expect(image['url'], 'https://cdn/resume.png');
       expect(harness.client.requests.length, 1);
       expect(harness.client.requests.single.method, 'GET');
-      expect(harness.client.requests.single.url, 'https://api.example.com/v1/videos/task-resume');
+      expect(
+        harness.client.requests.single.url,
+        'https://api.example.com/v1/videos/task-resume',
+      );
 
       final snapshot = harness.backgroundCoordinator.loadJob('job-resume');
       expect(snapshot, isNotNull);

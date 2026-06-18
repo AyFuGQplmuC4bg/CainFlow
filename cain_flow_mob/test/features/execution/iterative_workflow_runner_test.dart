@@ -7,6 +7,7 @@ import 'package:cain_flow_mob/features/execution/cain_flow_node_executor.dart';
 import 'package:cain_flow_mob/features/execution/execution_services.dart';
 import 'package:cain_flow_mob/features/execution/execution_signals.dart';
 import 'package:cain_flow_mob/features/execution/iterative_workflow_runner.dart';
+import 'package:cain_flow_mob/features/execution/node_executor.dart';
 import 'package:cain_flow_mob/features/execution/provider_request_builder.dart';
 import 'package:cain_flow_mob/features/logs/log_signals.dart';
 import 'package:cain_flow_mob/features/media/media_repository.dart';
@@ -145,6 +146,32 @@ void main() {
     expect(result.state, WorkflowExecutionState.failed);
     expect(result.error, contains('max steps'));
   });
+
+  test('treats provider request cancellation as canceled', () async {
+    final signals = ExecutionSignals();
+    final runner = IterativeWorkflowRunner(
+      executor: _CancelingExecutor(),
+      signals: signals,
+    );
+
+    final result = await runner.run(
+      _doc(const [FlowNode(id: 'src', type: 'TextChat', x: 0, y: 0)], const []),
+    );
+
+    expect(result.state, WorkflowExecutionState.canceled);
+    expect(signals.workflowState.value, WorkflowExecutionState.canceled);
+    expect(signals.nodeStates.value['src']?.state, NodeRunState.skipped);
+  });
+}
+
+class _CancelingExecutor implements NodeExecutor {
+  @override
+  Future<NodeExecutionResult> execute(
+    FlowNode node,
+    NodeExecutionContext context,
+  ) async {
+    throw const ProviderRequestCanceled();
+  }
 }
 
 class _NoopClient implements ProviderClient {

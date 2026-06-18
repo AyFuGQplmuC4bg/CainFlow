@@ -78,7 +78,19 @@ class WorkflowRunner {
           );
         }
         results[node.id] = result;
-        signals.markNode(node.id, NodeRunState.completed, message: result.message);
+        signals.markNode(
+          node.id,
+          NodeRunState.completed,
+          message: result.message,
+        );
+      } on ProviderRequestCanceled {
+        signals.markNode(node.id, NodeRunState.skipped);
+        _markRemainingSkipped(plan, node.id);
+        signals.markWorkflowCanceled();
+        return WorkflowRunResult(
+          state: WorkflowExecutionState.canceled,
+          results: Map.unmodifiable(results),
+        );
       } catch (error) {
         return _failWorkflow(plan, node.id, results, error);
       }
@@ -100,7 +112,8 @@ class WorkflowRunner {
     final pending = {for (final n in plan.steps) n.id};
     final remainingDeps = <String, int>{};
     for (final node in plan.steps) {
-      remainingDeps[node.id] = plan.incomingConnections(node.id)
+      remainingDeps[node.id] = plan
+          .incomingConnections(node.id)
           .map((c) => c.from.nodeId)
           .toSet()
           .length;
@@ -146,9 +159,23 @@ class WorkflowRunner {
       for (final outcome in batch) {
         pending.remove(outcome.nodeId);
         if (outcome.error != null) {
+          if (outcome.error is ProviderRequestCanceled) {
+            signals.markNode(outcome.nodeId, NodeRunState.skipped);
+            for (final id in pending) {
+              signals.markNode(id, NodeRunState.skipped);
+            }
+            signals.markWorkflowCanceled();
+            return WorkflowRunResult(
+              state: WorkflowExecutionState.canceled,
+              results: Map.unmodifiable(results),
+            );
+          }
           final message = _errorMessage(outcome.error!);
-          signals.markNode(outcome.nodeId, NodeRunState.failed,
-              message: message);
+          signals.markNode(
+            outcome.nodeId,
+            NodeRunState.failed,
+            message: message,
+          );
           for (final id in pending) {
             signals.markNode(id, NodeRunState.skipped);
           }
@@ -160,13 +187,15 @@ class WorkflowRunner {
           );
         }
         results[outcome.nodeId] = outcome.result!;
-        signals.markNode(outcome.nodeId, NodeRunState.completed,
-            message: outcome.result!.message);
+        signals.markNode(
+          outcome.nodeId,
+          NodeRunState.completed,
+          message: outcome.result!.message,
+        );
         // Decrement dependents.
         for (final c in plan.connections) {
           if (c.from.nodeId == outcome.nodeId) {
-            remainingDeps[c.to.nodeId] =
-                (remainingDeps[c.to.nodeId] ?? 1) - 1;
+            remainingDeps[c.to.nodeId] = (remainingDeps[c.to.nodeId] ?? 1) - 1;
           }
         }
       }
