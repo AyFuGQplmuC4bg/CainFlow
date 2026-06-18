@@ -1376,6 +1376,7 @@ class _CanvasStageState extends State<_CanvasStage> {
                         : null,
                     onSelect: () => state.selectNode(node.id),
                     onOpen: () => _openNodeEditor(context, node.id),
+                    onDisconnect: () => state.disconnectNode(node.id),
                     onPortTap: (port, isOutput) =>
                         _handlePortTap(context, node.id, port, isOutput),
                     onMove: (offset) {

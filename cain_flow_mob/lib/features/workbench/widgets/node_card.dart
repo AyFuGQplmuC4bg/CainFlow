@@ -86,6 +86,7 @@ class NodeCard extends StatelessWidget {
     required this.onSelect,
     required this.onMove,
     this.onOpen,
+    this.onDisconnect,
     this.onPortTap,
     this.pendingFromPort,
     this.imagePayload,
@@ -101,6 +102,9 @@ class NodeCard extends StatelessWidget {
 
   /// Tapping the node body selects it and opens its editor (param sheet).
   final VoidCallback? onOpen;
+
+  /// Double tapping the node body disconnects every link touching it.
+  final VoidCallback? onDisconnect;
 
   /// Called when a port dot is tapped. [isOutput] distinguishes the origin
   /// (output) from the destination (input) of a point-select connection.
@@ -143,6 +147,7 @@ class NodeCard extends StatelessWidget {
         onSelect();
         onOpen?.call();
       },
+      onDoubleTap: onDisconnect,
       onPanStart: (_) => onSelect(),
       onPanUpdate: (details) {
         onMove(NodeOffset(details.delta.dx, details.delta.dy));

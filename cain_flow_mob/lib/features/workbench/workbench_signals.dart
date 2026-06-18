@@ -276,6 +276,19 @@ class WorkbenchSignals {
     if (selectedNodeId.value == nodeId) selectedNodeId.value = null;
   }
 
+  /// Removes every connection touching [nodeId], leaving the node in place.
+  void disconnectNode(String nodeId) {
+    final nextConnections = [
+      for (final connection in connections.value)
+        if (connection.fromNodeId != nodeId && connection.toNodeId != nodeId)
+          connection,
+    ];
+    if (nextConnections.length == connections.value.length) return;
+
+    _recordMutation();
+    connections.value = nextConnections;
+  }
+
   NodeOffset _nextNodeSpot() {
     // Cascade new nodes so they don't stack exactly on top of each other.
     final count = nodes.value.length;

@@ -148,6 +148,18 @@ void main() {
       state.removeNode('node_text_prompt');
       expect(state.selectedNodeId.value, isNull);
     });
+
+    test('disconnectNode drops every connection touching the node', () {
+      final state = WorkbenchSignals();
+      var mutationCount = 0;
+      state.onBeforeMutation = () => mutationCount++;
+
+      state.disconnectNode('node_image_generate');
+
+      expect(state.connectionCount.value, 0);
+      expect(state.nodes.value.any((n) => n.id == 'node_image_generate'), isTrue);
+      expect(mutationCount, 1);
+    });
   });
 
   group('point-select connections', () {

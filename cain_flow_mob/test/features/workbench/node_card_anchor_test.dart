@@ -1,5 +1,7 @@
 import 'package:cain_flow_mob/features/nodes/node_registry.dart';
 import 'package:cain_flow_mob/features/workbench/widgets/node_card.dart';
+import 'package:cain_flow_mob/features/workbench/workbench_signals.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -49,5 +51,36 @@ void main() {
     );
     expect(withImg, greaterThan(noImg));
     expect(nodeCardHeight(gen, hasImage: true) - nodeCardHeight(gen), 84);
+  });
+
+  testWidgets('double tap invokes the disconnect callback', (tester) async {
+    var disconnected = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NodeCard(
+            node: const WorkbenchNode(
+              id: 'node_text_prompt',
+              type: 'Text',
+              title: 'Text Prompt',
+              x: 0,
+              y: 0,
+            ),
+            definition: nodeRegistry.get('Text'),
+            selected: false,
+            onSelect: () {},
+            onDisconnect: () => disconnected = true,
+            onMove: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(NodeCard));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byType(NodeCard));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(disconnected, isTrue);
   });
 }
